@@ -1,0 +1,34 @@
+[project]
+name = "enterprise-knowledge-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Aritra Naharay", email = "aritranaharay@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "faiss-cpu>=1.15.1",
+    "gradio>=6.29.0",
+    "langchain>=1.4.3",
+    "langchain-anthropic>=1.7.5",
+    "langchain-community>=0.4.2",
+    "langchain-core>=1.6.6",
+    "langchain-google-genai>=4.4.0",
+    "langchain-huggingface>=1.2.2",
+    "langchain-openai>=1.6.6",
+    "langchain-text-splitters>=1.1.2",
+    "neo4j>=6.3.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
+    "pydantic[email]>=2.13.5",
+    "python-dotenv>=1.2.3",
+    "sentence-transformers>=6.1.0",
+]
+
+[project.scripts]
+enterprise-knowledge-agent = "enterprise_knowledge_agent:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"

@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+.env
+
+# Locally generated FAISS index
+data/vector_store/
+
+
+.env
+.venv/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.mypy_cache/
