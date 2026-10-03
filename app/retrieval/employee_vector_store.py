@@ -48,8 +48,16 @@ class EmployeeVectorStore:
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     ):
         self.index_path = Path(index_path)
-        self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
+        self.embedding_model = embedding_model
+        self._embeddings: HuggingFaceEmbeddings | None = None
         self._store: FAISS | None = None
+
+    @property
+    def embeddings(self) -> HuggingFaceEmbeddings:
+        """Load the model only when the index is first used."""
+        if self._embeddings is None:
+            self._embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model)
+        return self._embeddings
 
     def upsert_employees(self, employees: list[Employee]) -> None:
         if not employees:
@@ -76,6 +84,18 @@ class EmployeeVectorStore:
         if store is None:
             return []
         return store.similarity_search(query, k=limit)
+
+    def search_with_scores(
+        self, query: str, limit: int = 5
+    ) -> list[tuple[Document, float]]:
+        """Return matching employee documents and their FAISS distances.
+
+        A lower distance means the document is a closer semantic match.
+        """
+        store = self._load()
+        if store is None:
+            return []
+        return store.similarity_search_with_score(query, k=limit)
 
     def _load(self) -> FAISS | None:
         if self._store is not None:

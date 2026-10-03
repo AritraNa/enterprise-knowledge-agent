@@ -12,6 +12,15 @@ REQUIRED_COLUMNS = {
 }
 
 
+def optional_text(value: object) -> str | None:
+    """Convert blank Excel cells (pandas NaN) into Pydantic-friendly None."""
+    if pd.isna(value):
+        return None
+
+    text = str(value).strip()
+    return text or None
+
+
 def parse_employees(path: str) -> list[tuple[Employee, SourceRecord]]:
     df = pd.read_excel(path)
     df = normalize_dataframe(df)
@@ -23,22 +32,24 @@ def parse_employees(path: str) -> list[tuple[Employee, SourceRecord]]:
     records: list[tuple[Employee, SourceRecord]] = []
 
     for row_number, (_, row) in enumerate(df.iterrows(), start=2):
+        skills_text = optional_text(row.get("skills"))
+
         employee = Employee(
             id=f"emp_{row['employee_id']}",
             employee_id=str(row["employee_id"]),
             name=str(row["name"]),
-            email=row["email"],
+            email=optional_text(row["email"]),
             department_id=f"dept_{str(row['department']).lower()}",
             department_name=str(row["department"]),
-            job_title=row.get("job_title"),
-            location=row.get("location"),
-            manager_id=row.get("manager_id"),
+            job_title=optional_text(row.get("job_title")),
+            location=optional_text(row.get("location")),
+            manager_id=optional_text(row.get("manager_id")),
             skills=[
                 skill.strip()
-                for skill in str(row.get("skills", "")).split(",")
+                for skill in (skills_text or "").split(",")
                 if skill.strip()
             ],
-            experience_summary=row.get("experience_summary"),
+            experience_summary=optional_text(row.get("experience_summary")),
         )
 
         source_record = SourceRecord(
