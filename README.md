@@ -84,6 +84,7 @@ NEO4J_URI=...
 NEO4J_USERNAME=...
 NEO4J_PASSWORD=...
 RETRIEVAL_TOP_K=5
+RAG_MAX_FAISS_DISTANCE=1.25
 ```
 
 Ingest the employee spreadsheet into Neo4j and FAISS:
@@ -109,9 +110,55 @@ The first FAISS operation downloads the local embedding model
 
 ## Next build stages
 
-1. Add importers for PDFs, Word documents, web pages, and other policy files.
-2. Chunk each document while retaining source document and section metadata.
-3. Index document chunks in FAISS.
-4. Add a LangGraph RAG workflow that retrieves evidence before answering.
-5. Return answer, source document, section, and evidence in every response.
-6. Add a chat or API interface for employees.
+1. Add importers for Word documents, web pages, and other policy-file formats.
+2. Add a LangGraph RAG workflow that retrieves evidence before answering.
+3. Return answer, source document, section, and evidence in every response.
+4. Add a chat or API interface for employees.
+
+## Policy PDF ingestion and evidence search
+
+Place a policy PDF anywhere in the project, for example
+`data/raw/policies/travel_reimbursement_policy.pdf`, then ingest it:
+
+```bash
+uv run python -m app.main ingest-policy \
+  data/raw/policies/travel_reimbursement_policy.pdf
+```
+
+The importer uses LangChain's PDF loader and text splitter. Every chunk retains
+the source document, page number, section heading (when detected), and chunk
+number. Chunks are stored in a dedicated FAISS policy index.
+
+Search the policy evidence:
+
+```bash
+uv run python -m app.main search-policy "What is the travel reimbursement policy?"
+```
+
+The command returns retrieved evidence with the source document, section, and
+page. The next LangGraph stage will use these evidence chunks to create the
+final grounded answer.
+
+## Grounded policy answers with LangGraph
+
+The `ask-policy` command runs a LangGraph workflow with four stages:
+
+1. Retrieve the most relevant FAISS evidence chunks.
+2. Validate that source-backed evidence exists and is relevant enough.
+3. Generate an answer using only those chunks through the configured local
+   Ollama model.
+4. Return the answer and the source document, section, and page for its
+   citations.
+
+Start Ollama locally and ensure the model in `DOCUMENT_INGESTION_MODEL` is
+available. Then run:
+
+```bash
+uv run python -m app.main ask-policy \
+  "What are the roles and responsibilities in the CyberSafety policy?"
+```
+
+If FAISS cannot retrieve sufficiently relevant evidence, the workflow stops
+before calling the model and reports that it cannot provide a source-backed
+answer. Adjust `RAG_MAX_FAISS_DISTANCE` only after evaluating your own policy
+question set; lower values are stricter.
