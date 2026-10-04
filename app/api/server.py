@@ -6,6 +6,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from app.graph.neo4j_client import Neo4jStore
@@ -31,6 +32,8 @@ app = FastAPI(
     version="0.1.0",
     description="Upload, search, and ask questions over enterprise policy and employee data.",
 )
+
+app.mount("/ui", StaticFiles(directory="app/web/static", html=True), name="ui")
 
 
 class QueryRequest(BaseModel):

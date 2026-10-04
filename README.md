@@ -172,6 +172,8 @@ uv run uvicorn app.api.server:app --reload
 ```
 
 Open the generated API documentation at `http://127.0.0.1:8000/docs`.
+The same server provides a minimal browser interface at
+`http://127.0.0.1:8000/ui/`.
 
 ### Policy endpoints
 
