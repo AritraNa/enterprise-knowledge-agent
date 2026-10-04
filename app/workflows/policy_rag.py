@@ -131,13 +131,15 @@ class PolicyRAGWorkflow:
             ]
         )
         answer = str(response.content).strip()
-        cited_ids = {int(value) for value in re.findall(r"\[(\d+)\]", answer)}
+        cited_ids = {int(value) for value in self._citation_pattern.findall(answer)}
         citations = [
             item for item in evidence if item["citation_id"] in cited_ids
         ]
 
         # Preserve provenance even if a local model omits the requested markers.
         return {"answer": answer, "citations": citations or evidence}
+
+    _citation_pattern = re.compile(r"\[(\d+)\]")
 
     @staticmethod
     def _respond_insufficient(_: PolicyRAGState) -> PolicyRAGState:

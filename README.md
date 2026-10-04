@@ -162,3 +162,76 @@ If FAISS cannot retrieve sufficiently relevant evidence, the workflow stops
 before calling the model and reports that it cannot provide a source-backed
 answer. Adjust `RAG_MAX_FAISS_DISTANCE` only after evaluating your own policy
 question set; lower values are stricter.
+
+## FastAPI backend
+
+Run the API locally:
+
+```bash
+uv run uvicorn app.api.server:app --reload
+```
+
+Open the generated API documentation at `http://127.0.0.1:8000/docs`.
+
+### Policy endpoints
+
+- `POST /v1/policies/upload` accepts one PDF as multipart form data under the
+  `file` field and indexes it immediately.
+- `POST /v1/policies/search` accepts `{ "query": "...", "limit": 5 }` and
+  returns evidence chunks with source, section, and page metadata.
+- `POST /v1/policies/ask` accepts the same JSON body and returns the LangGraph
+  grounded answer with citations.
+
+### Employee endpoints
+
+- `POST /v1/employees/upload` accepts one `.xlsx` file as multipart form data
+  under the `file` field, imports it into Neo4j, and refreshes employee FAISS.
+- `POST /v1/employees/search` accepts `{ "query": "...", "limit": 5 }` and
+  returns matching employee records.
+- `POST /v1/employees/ask` accepts the same JSON body and returns a grounded
+  LangGraph answer with employee-record citations.
+
+For example, upload a policy:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/policies/upload \
+  -F "file=@data/raw/policies/CyberSafety_digital_citizenship_and_responsible_AI_technology_use_policy.pdf"
+```
+
+Search its evidence:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/policies/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Roles and Responsibilities in the CyberSafety policy","limit":3}'
+```
+
+Ask for a grounded policy answer:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/policies/ask \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Who is responsible for cyber safety?","limit":3}'
+```
+
+Upload and ingest employee data:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/employees/upload \
+  -F "file=@data/raw/employees.xlsx"
+```
+
+Search or ask about employees:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/employees/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"people in Finance","limit":3}'
+
+curl -X POST http://127.0.0.1:8000/v1/employees/ask \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Who works in Finance?","limit":3}'
+```
+
+Uploads are limited to 50 MiB by default. Set `MAX_UPLOAD_BYTES` in `.env` to
+change that limit.

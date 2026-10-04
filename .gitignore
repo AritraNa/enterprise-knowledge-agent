@@ -13,6 +13,7 @@ wheels/
 
 # Locally generated FAISS index
 data/vector_store/
+data/uploads/
 
 
 .env

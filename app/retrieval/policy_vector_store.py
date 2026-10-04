@@ -32,7 +32,8 @@ class PolicyVectorStore:
         if not chunks:
             return
 
-        source_path = chunks[0].metadata["source_path"]
+        source_id = chunks[0].metadata["source_id"]
+        source_name = chunks[0].metadata["source_document"]
         store = self._load()
 
         if store is None:
@@ -45,7 +46,11 @@ class PolicyVectorStore:
             stored_ids = [
                 document_id
                 for document_id, document in store.docstore._dict.items()
-                if document.metadata.get("source_path") == source_path
+                if document.metadata.get("source_id") == source_id
+                or (
+                    document.metadata.get("source_id") is None
+                    and document.metadata.get("source_document") == source_name
+                )
             ]
             if stored_ids:
                 store.delete(stored_ids)
@@ -83,7 +88,7 @@ class PolicyVectorStore:
     def _document_id(chunk: Document) -> str:
         identity = "|".join(
             [
-                chunk.metadata["source_path"],
+                chunk.metadata["source_id"],
                 str(chunk.metadata["page"]),
                 chunk.metadata["section"],
                 str(chunk.metadata["chunk_number"]),

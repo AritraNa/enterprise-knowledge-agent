@@ -65,7 +65,9 @@ class PolicyPDFImporter:
             add_start_index=True,
         )
 
-    def load(self, path: str | Path) -> list[Document]:
+    def load(
+        self, path: str | Path, source_name: str | None = None
+    ) -> list[Document]:
         pdf_path = Path(path)
         if not pdf_path.is_file():
             raise FileNotFoundError(f"Policy PDF not found: {pdf_path}")
@@ -73,7 +75,9 @@ class PolicyPDFImporter:
         # Layout extraction prevents PDFs that position each word individually
         # from becoming one word per line in the retrieved evidence.
         pages = PyPDFLoader(str(pdf_path), extraction_mode="layout").load()
-        section_documents = self._separate_sections(pages, pdf_path)
+        section_documents = self._separate_sections(
+            pages, pdf_path, source_name or pdf_path.name
+        )
         chunks = self.splitter.split_documents(section_documents)
 
         for chunk_number, chunk in enumerate(chunks, start=1):
@@ -82,7 +86,7 @@ class PolicyPDFImporter:
         return chunks
 
     def _separate_sections(
-        self, pages: list[Document], pdf_path: Path
+        self, pages: list[Document], pdf_path: Path, source_name: str
     ) -> list[Document]:
         section_documents: list[Document] = []
 
@@ -102,7 +106,8 @@ class PolicyPDFImporter:
                         Document(
                             page_content=content,
                             metadata={
-                                "source_document": pdf_path.name,
+                                "source_document": source_name,
+                                "source_id": source_name,
                                 "source_path": str(pdf_path.resolve()),
                                 "page": page_number,
                                 "section": section,
