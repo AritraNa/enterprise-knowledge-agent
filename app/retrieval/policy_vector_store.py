@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 from datetime import UTC, datetime
 
 from langchain_core.documents import Document
@@ -49,7 +50,7 @@ class PolicyVectorStore:
         )
         rows = [
             {
-                "id": self._document_id(chunk),
+                "id": self._document_id(document_id, chunk),
                 "document_id": document_id,
                 "section_id": self._section_id(document_id, chunk),
                 "content": chunk.page_content,
@@ -79,8 +80,16 @@ class PolicyVectorStore:
     def search_with_scores(
         self, query: str, limit: int = 5, filters: dict | None = None
     ) -> list[tuple[Document, float]]:
+        """Retrieve policy chunks with semantic + keyword ranking.
+
+        Metadata constraints are applied in Neo4j before candidates are ranked.
+        This keeps an active policy-type query from being crowded out by chunks
+        belonging to unrelated or superseded documents.
+        """
         query_vector = self.embeddings.embed_query(query)
-        cypher = """
+        filters = {"status": "active", **(filters or {})}
+        candidate_limit = max(limit * 5, 20)
+        vector_cypher = """
         MATCH (chunk:PolicyChunk)
         SEARCH chunk IN (
             VECTOR INDEX policy_chunk_embedding_index
@@ -88,55 +97,71 @@ class PolicyVectorStore:
             LIMIT $limit
         ) SCORE AS score
         MATCH (document:PolicyDocument)-[:HAS_SECTION]->(:PolicySection)-[:HAS_CHUNK]->(chunk)
-        RETURN chunk.content AS content,
-               chunk.source_document AS source_document,
-               chunk.source_id AS source_id,
-               chunk.source_path AS source_path,
-               chunk.page AS page,
-               chunk.section AS section,
-               chunk.start_index AS start_index,
-               chunk.chunk_number AS chunk_number,
-               document.policy_type AS policy_type,
+        WHERE ($policy_type IS NULL OR document.policy_type = $policy_type)
+          AND ($owner_department IS NULL OR document.owner_department = $owner_department)
+          AND ($effective_date IS NULL OR document.effective_date = $effective_date)
+          AND ($status IS NULL OR document.status = $status)
+        RETURN chunk.id AS id, chunk.content AS content,
+               chunk.source_document AS source_document, chunk.source_id AS source_id,
+               chunk.source_path AS source_path, chunk.page AS page,
+               chunk.section AS section, chunk.start_index AS start_index,
+               chunk.chunk_number AS chunk_number, document.policy_type AS policy_type,
                document.owner_department AS owner_department,
-               document.effective_date AS effective_date,
-               document.version AS version,
-               document.status AS status,
-               score
+               document.effective_date AS effective_date, document.version AS version,
+               document.status AS status, score
         """
+        keyword_cypher = """
+        CALL db.index.fulltext.queryNodes('policy_chunk_fulltext', $search_text)
+        YIELD node AS chunk, score
+        MATCH (document:PolicyDocument)-[:HAS_SECTION]->(:PolicySection)-[:HAS_CHUNK]->(chunk)
+        WHERE ($policy_type IS NULL OR document.policy_type = $policy_type)
+          AND ($owner_department IS NULL OR document.owner_department = $owner_department)
+          AND ($effective_date IS NULL OR document.effective_date = $effective_date)
+          AND ($status IS NULL OR document.status = $status)
+        RETURN chunk.id AS id, chunk.content AS content,
+               chunk.source_document AS source_document, chunk.source_id AS source_id,
+               chunk.source_path AS source_path, chunk.page AS page,
+               chunk.section AS section, chunk.start_index AS start_index,
+               chunk.chunk_number AS chunk_number, document.policy_type AS policy_type,
+               document.owner_department AS owner_department,
+               document.effective_date AS effective_date, document.version AS version,
+               document.status AS status, score
+        LIMIT $limit
+        """
+        parameters = {
+            "limit": candidate_limit,
+            "embedding": query_vector,
+            "search_text": self._keyword_query(query),
+            "policy_type": filters.get("policy_type"),
+            "owner_department": filters.get("owner_department"),
+            "effective_date": filters.get("effective_date"),
+            "status": filters.get("status"),
+        }
         with self.driver.session() as session:
-            records = session.run(
-                cypher,
-                limit=max(limit * 5, 20),
-                embedding=query_vector,
-            ).data()
-        results = [
-            (
-                Document(
-                    page_content=record["content"],
-                    metadata={
-                        "source_document": record["source_document"],
-                        "source_id": record["source_id"],
-                        "source_path": record["source_path"],
-                        "page": record["page"],
-                        "section": record["section"],
-                        "start_index": record["start_index"],
-                        "chunk_number": record["chunk_number"],
-                        "policy_type": record["policy_type"],
-                        "owner_department": record["owner_department"],
-                        "effective_date": record["effective_date"],
-                        "version": record["version"],
-                        "status": record["status"],
-                    },
-                ),
-                float(record["score"]),
+            vector_records = session.run(vector_cypher, **parameters).data()
+            keyword_records = session.run(keyword_cypher, **parameters).data()
+
+        # Semantic similarity is the primary signal; lexical relevance is a
+        # boost for policy names, section headings, limits, and acronyms.
+        merged: dict[str, dict] = {record["id"]: {**record, "vector_score": float(record["score"])} for record in vector_records}
+        max_keyword_score = max((float(record["score"]) for record in keyword_records), default=1.0)
+        for record in keyword_records:
+            item = merged.setdefault(record["id"], {**record, "vector_score": 0.0})
+            item["keyword_score"] = float(record["score"]) / max_keyword_score
+
+        ranked = []
+        for record in merged.values():
+            score = (0.80 * max(record["vector_score"], 0.0)) + (0.20 * record.get("keyword_score", 0.0))
+            document = Document(
+                page_content=record["content"],
+                metadata={key: record[key] for key in (
+                    "source_document", "source_id", "source_path", "page", "section",
+                    "start_index", "chunk_number", "policy_type", "owner_department",
+                    "effective_date", "version", "status",
+                )},
             )
-            for record in records
-        ]
-        filters = filters or {"status": "active"}
-        return [
-            result for result in results
-            if all(result[0].metadata.get(key) == value for key, value in filters.items() if value is not None)
-        ][:limit]
+            ranked.append((document, score))
+        return sorted(ranked, key=lambda item: item[1], reverse=True)[:limit]
 
     def _ensure_vector_index(self) -> None:
         query = f"""
@@ -148,6 +173,18 @@ class PolicyVectorStore:
         }}}}
         """
         with self.driver.session() as session:
+            session.run(
+                "CREATE CONSTRAINT policy_document_id IF NOT EXISTS "
+                "FOR (document:PolicyDocument) REQUIRE document.id IS UNIQUE"
+            ).consume()
+            session.run(
+                "CREATE CONSTRAINT policy_section_id IF NOT EXISTS "
+                "FOR (section:PolicySection) REQUIRE section.id IS UNIQUE"
+            ).consume()
+            session.run(
+                "CREATE CONSTRAINT policy_chunk_id IF NOT EXISTS "
+                "FOR (chunk:PolicyChunk) REQUIRE chunk.id IS UNIQUE"
+            ).consume()
             session.run(query).consume()
             session.run(
                 "CREATE FULLTEXT INDEX policy_chunk_fulltext IF NOT EXISTS "
@@ -183,9 +220,10 @@ class PolicyVectorStore:
             ).consume()
 
     @staticmethod
-    def _document_id(chunk: Document) -> str:
+    def _document_id(document_id: str, chunk: Document) -> str:
         identity = "|".join(
             [
+                document_id,
                 chunk.metadata["source_id"],
                 str(chunk.metadata["page"]),
                 chunk.metadata["section"],
@@ -199,3 +237,13 @@ class PolicyVectorStore:
     def _section_id(document_id: str, chunk: Document) -> str:
         identity = f"{document_id}|{chunk.metadata['page']}|{chunk.metadata['section']}"
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _keyword_query(query: str) -> str:
+        """Create a safe full-text query without Lucene control characters."""
+        stop_words = {"a", "an", "are", "for", "how", "is", "of", "the", "to", "what", "who"}
+        terms = [
+            term for term in re.findall(r"[A-Za-z0-9]+", query.casefold())
+            if term not in stop_words
+        ]
+        return " OR ".join(terms) or query

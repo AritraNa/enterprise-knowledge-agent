@@ -62,8 +62,10 @@ class EmployeeVectorStore:
             FOR $embedding
             LIMIT $limit
         ) SCORE AS score
+        OPTIONAL MATCH (employee)-[:WORKS_FOR]->(department:Department)
         RETURN employee.id AS employee_id,
                employee.department_id AS department_id,
+               department.name AS department,
                employee.location AS location,
                employee.job_title AS job_title,
                employee.salary AS salary,
@@ -84,7 +86,7 @@ class EmployeeVectorStore:
                     metadata={
                         "employee_id": record["employee_id"],
                         "department_id": record["department_id"],
-                        "department": None,
+                        "department": record["department"],
                         "location": record["location"],
                         "job_title": record["job_title"],
                         "salary": record["salary"],

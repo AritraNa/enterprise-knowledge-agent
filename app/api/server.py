@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -105,13 +105,23 @@ def health() -> dict[str, str]:
 )
 async def upload_policy(
     file: Annotated[UploadFile, File(description="A policy PDF")],
+    policy_type: Annotated[str | None, Form()] = None,
+    owner_department: Annotated[str | None, Form()] = None,
+    effective_date: Annotated[str | None, Form()] = None,
+    version: Annotated[str | None, Form()] = None,
 ) -> IngestResponse:
     stored_path, original_name = await _save_upload(
         file, POLICY_UPLOAD_DIR, {".pdf"}
     )
     try:
         records_indexed = await run_in_threadpool(
-            _ingest_policy, stored_path, original_name
+            _ingest_policy,
+            stored_path,
+            original_name,
+            policy_type,
+            owner_department,
+            effective_date,
+            version,
         )
     except Exception as error:
         raise HTTPException(
@@ -161,6 +171,7 @@ def search_policies(request: PolicyQueryRequest) -> SearchResponse:
         filters={
             "policy_type": request.policy_type,
             "owner_department": request.owner_department,
+            "effective_date": request.effective_date,
             "status": request.status,
         },
     )
@@ -189,6 +200,7 @@ def ask_policies(request: PolicyQueryRequest) -> AskResponse:
             filters={
                 "policy_type": request.policy_type,
                 "owner_department": request.owner_department,
+                "effective_date": request.effective_date,
                 "status": request.status,
             },
         )
@@ -246,12 +258,23 @@ async def _save_upload(
     return stored_path, original_name
 
 
-def _ingest_policy(path: Path, source_name: str) -> int:
+def _ingest_policy(
+    path: Path,
+    source_name: str,
+    policy_type: str | None = None,
+    owner_department: str | None = None,
+    effective_date: str | None = None,
+    version: str | None = None,
+) -> int:
     chunks = PolicyPDFImporter().load(path, source_name=source_name)
     source_hash = sha256(path.read_bytes()).hexdigest()
-    policy_type = _infer_policy_type(source_name)
     _policy_vector_store.replace_source(
-        chunks, source_hash=source_hash, policy_type=policy_type
+        chunks,
+        source_hash=source_hash,
+        policy_type=policy_type or _infer_policy_type(source_name),
+        owner_department=owner_department,
+        effective_date=effective_date,
+        version=version,
     )
     return len(chunks)
 

@@ -1,5 +1,7 @@
 import argparse
 import os
+from hashlib import sha256
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -48,7 +50,12 @@ def search(query: str, limit: int) -> None:
 def ingest_policy(source_file: str) -> None:
     """Extract, section, chunk, and index a policy PDF."""
     chunks = PolicyPDFImporter().load(source_file)
-    PolicyVectorStore().replace_source(chunks)
+    source_hash = sha256(Path(source_file).read_bytes()).hexdigest()
+    PolicyVectorStore().replace_source(
+        chunks,
+        source_hash=source_hash,
+        policy_type="General",
+    )
     print(f"Indexed {len(chunks)} chunks from {source_file}.")
 
 

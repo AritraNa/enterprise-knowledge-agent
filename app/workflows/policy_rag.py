@@ -137,8 +137,18 @@ class PolicyRAGWorkflow:
             item for item in evidence if item["citation_id"] in cited_ids
         ]
 
-        # Preserve provenance even if a local model omits the requested markers.
-        return {"answer": answer, "citations": citations or evidence}
+        # A response without citations cannot meet the product's answer + source
+        # + section + evidence contract, even when retrieval itself succeeded.
+        if not citations:
+            return {
+                "answer": (
+                    "I found potentially relevant evidence, but could not produce "
+                    "a properly cited answer. Please refine the question or inspect "
+                    "the retrieved policy evidence."
+                ),
+                "citations": [],
+            }
+        return {"answer": answer, "citations": citations}
 
     _citation_pattern = re.compile(r"\[(\d+)\]")
 

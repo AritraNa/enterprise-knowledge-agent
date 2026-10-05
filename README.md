@@ -136,6 +136,18 @@ the source document, page number, section heading (when detected), and chunk
 number. Chunks are stored as `PolicyChunk` nodes in a dedicated Neo4j vector
 index.
 
+Each upload creates a versioned graph model:
+
+```text
+(:PolicyDocument {source_hash, version, policy_type, owner_department,
+                  effective_date, status})
+  -[:HAS_SECTION]->(:PolicySection)-[:HAS_CHUNK]->(:PolicyChunk {embedding})
+```
+
+Uploading a changed copy of the same filename creates a new document version
+and marks the former active version as `superseded`. The API searches only
+active versions by default.
+
 Search the policy evidence:
 
 ```bash
@@ -152,13 +164,13 @@ The `ask-policy` command runs a LangGraph workflow with four stages:
 
 1. Retrieve the most relevant Neo4j vector-index evidence chunks.
 2. Validate that source-backed evidence exists and is relevant enough.
-3. Generate an answer using only those chunks through the configured local
-   Ollama model.
+3. Generate an answer using only those chunks through the configured
+   OpenAI-compatible model endpoint.
 4. Return the answer and the source document, section, and page for its
    citations.
 
-Start Ollama locally and ensure the model in `DOCUMENT_INGESTION_MODEL` is
-available. Then run:
+Ensure the endpoint and model in `OLLAMA_BASE_URL` and
+`DOCUMENT_INGESTION_MODEL` are available. Then run:
 
 ```bash
 uv run python -m app.main ask-policy \
@@ -184,12 +196,11 @@ The same server provides a minimal browser interface at
 
 ### Policy endpoints
 
-- `POST /v1/policies/upload` accepts one PDF as multipart form data under the
-  `file` field and indexes it immediately.
-- `POST /v1/policies/search` accepts `{ "query": "...", "limit": 5 }` and
-  returns evidence chunks with source, section, and page metadata.
-- `POST /v1/policies/ask` accepts the same JSON body and returns the LangGraph
-  grounded answer with citations.
+- `POST /v1/policies/upload` accepts one PDF under `file`. Optional multipart
+  fields are `policy_type`, `owner_department`, `effective_date`, and `version`.
+- `POST /v1/policies/search` and `POST /v1/policies/ask` accept `query`,
+  `limit`, and optional `policy_type`, `owner_department`, `effective_date`,
+  and `status` metadata filters. `status` defaults to `active`.
 
 ### Employee endpoints
 
@@ -212,7 +223,7 @@ Search its evidence:
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/policies/search \
   -H "Content-Type: application/json" \
-  -d '{"query":"Roles and Responsibilities in the CyberSafety policy","limit":3}'
+  -d '{"query":"Roles and Responsibilities in the CyberSafety policy","limit":3,"policy_type":"IT"}'
 ```
 
 Ask for a grounded policy answer:
@@ -222,6 +233,19 @@ curl -X POST http://127.0.0.1:8000/v1/policies/ask \
   -H "Content-Type: application/json" \
   -d '{"query":"Who is responsible for cyber safety?","limit":3}'
 ```
+
+## Retrieval evaluation
+
+`data/evals/policy_retrieval.json` is a small retrieval-regression dataset.
+Add representative questions whenever a real policy issue is found, then run:
+
+```bash
+uv run python -m app.evaluation.policy_retrieval
+```
+
+The evaluator checks that the expected policy-type filter retrieves evidence
+containing the expected concepts. It exits non-zero on a regression, so it can
+also be used in CI after policy fixtures have been ingested.
 
 Upload and ingest employee data:
 
