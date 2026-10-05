@@ -62,10 +62,10 @@ a { color: inherit; text-decoration: none; }
 
 .page { max-width: 900px; margin: 0 auto; padding: 64px 24px; animation: page-enter .45s cubic-bezier(.2,.8,.2,1) both; }
 .eyebrow { display: none; }
-h1 { color: #d8d2e1; font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.1; letter-spacing: -0.045em; margin: 10px 0 14px; text-shadow: 0 2px 18px rgba(17, 13, 35, .38); }
+h1 { color: #e5dfec; font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.1; letter-spacing: -0.045em; margin: 10px 0 14px; text-shadow: 0 2px 18px rgba(17, 13, 35, .38); }
 h1::selection { background: #ffd5ce; }
 h2 { margin: 0 0 8px; font-size: 1.25rem; }
-.lead { color: #beb6cb; line-height: 1.65; max-width: 650px; }
+.lead { color: #d0c8da; line-height: 1.65; max-width: 650px; }
 
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 38px; }
 .card {
@@ -80,7 +80,7 @@ h2 { margin: 0 0 8px; font-size: 1.25rem; }
 .card p { color: var(--muted); line-height: 1.5; margin-bottom: 0; }
 .card .action { color: var(--brand); font-weight: 650; font-size: .9rem; }
 
-.breadcrumbs { color: #b6afc2; font-size: .9rem; margin-bottom: 22px; }
+.breadcrumbs { color: #c9c1d2; font-size: .9rem; margin-bottom: 22px; }
 .breadcrumbs a:hover { color: #ffffff; }
 .panel { margin-top: 30px; background: rgba(255, 255, 255, .94); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
 .panel > p { color: var(--muted); line-height: 1.55; }

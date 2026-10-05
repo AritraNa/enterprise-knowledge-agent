@@ -15,3 +15,4 @@ class Employee(BaseModel):
     manager_id: str | None = None
     skills: list[str] = Field(default_factory=list)
     experience_summary: str | None = None
+    salary: str | None = None

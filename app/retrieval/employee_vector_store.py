@@ -5,7 +5,11 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.models.employee import Employee
-
+from app.retrieval.embedding_utils import (
+    create_embeddings,
+    rebuild_if_embedding_config_changed,
+    save_store,
+)
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -25,6 +29,8 @@ def employee_to_document(employee: Employee) -> Document:
         lines.append(f"Skills: {', '.join(employee.skills)}")
     if employee.experience_summary:
         lines.append(f"Experience: {employee.experience_summary}")
+    if employee.salary:
+        lines.append(f"Salary: {employee.salary}")
 
     return Document(
         id=employee.id,
@@ -35,6 +41,7 @@ def employee_to_document(employee: Employee) -> Document:
             "department": employee.department_name,
             "location": employee.location,
             "job_title": employee.job_title,
+            "salary": employee.salary,
         },
     )
 
@@ -56,7 +63,7 @@ class EmployeeVectorStore:
     def embeddings(self) -> HuggingFaceEmbeddings:
         """Load the model only when the index is first used."""
         if self._embeddings is None:
-            self._embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model)
+            self._embeddings = create_embeddings(self.embedding_model)
         return self._embeddings
 
     def upsert_employees(self, employees: list[Employee]) -> None:
@@ -76,8 +83,7 @@ class EmployeeVectorStore:
                 store.delete(ids_to_replace)
             store.add_documents(documents, ids=ids)
 
-        self.index_path.mkdir(parents=True, exist_ok=True)
-        self._store.save_local(str(self.index_path))
+        save_store(self.index_path, self._store)
 
     def search(self, query: str, limit: int = 5) -> list[Document]:
         store = self._load()
@@ -95,7 +101,15 @@ class EmployeeVectorStore:
         store = self._load()
         if store is None:
             return []
-        return store.similarity_search_with_score(query, k=limit)
+        candidate_limit = min(store.index.ntotal, max(limit, 50))
+        results = store.similarity_search_with_score(query, k=candidate_limit)
+        exact_skill_matches = [
+            result for result in results if self._matches_listed_skill(query, result[0])
+        ]
+        semantic_matches = [
+            result for result in results if result not in exact_skill_matches
+        ]
+        return (exact_skill_matches + semantic_matches)[:limit]
 
     def _load(self) -> FAISS | None:
         if self._store is not None:
@@ -106,9 +120,23 @@ class EmployeeVectorStore:
 
         # This index is produced only by this application. Do not load indexes
         # obtained from untrusted sources.
-        self._store = FAISS.load_local(
+        loaded_store = FAISS.load_local(
             str(self.index_path),
             self.embeddings,
             allow_dangerous_deserialization=True,
         )
+        self._store = rebuild_if_embedding_config_changed(
+            self.index_path, loaded_store, self.embeddings
+        )
         return self._store
+
+    @staticmethod
+    def _matches_listed_skill(query: str, document: Document) -> bool:
+        """Prefer exact skills for a skill-specific employee question."""
+        query_text = query.casefold()
+        for line in document.page_content.splitlines():
+            if not line.startswith("Skills:"):
+                continue
+            skills = (skill.strip().casefold() for skill in line.removeprefix("Skills:").split(","))
+            return any(skill and skill in query_text for skill in skills)
+        return False

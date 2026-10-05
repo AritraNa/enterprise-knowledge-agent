@@ -50,6 +50,7 @@ def parse_employees(path: str) -> list[tuple[Employee, SourceRecord]]:
                 if skill.strip()
             ],
             experience_summary=optional_text(row.get("experience_summary")),
+            salary=optional_text(row.get("salary")),
         )
 
         source_record = SourceRecord(

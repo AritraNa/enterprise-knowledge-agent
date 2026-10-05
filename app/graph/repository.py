@@ -21,7 +21,8 @@ class EmployeeRepository:
         SET
             e.employee_id = $employee_id,
             e.name = $name,
-            e.email = $email
+            e.email = $email,
+            e.salary = $salary
 
         MERGE (d:Department {id: $department_id})
         SET d.name = $department_name
@@ -53,6 +54,7 @@ class EmployeeRepository:
                 source_file=source_record.source_file,
                 sheet_name=source_record.sheet_name,
                 row_number=source_record.row_number,
+                salary=employee.salary,
                 job_id=job.id,
             )
 

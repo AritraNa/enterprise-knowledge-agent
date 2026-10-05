@@ -1,3 +1,5 @@
+import os
+
 from langchain_core.documents import Document
 
 from app.retrieval.employee_vector_store import EmployeeVectorStore
@@ -8,6 +10,10 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
     """Grounded LangGraph answers over indexed employee records."""
 
     def __init__(self, vector_store: EmployeeVectorStore | None = None, **kwargs):
+        kwargs.setdefault(
+            "max_evidence_distance",
+            float(os.getenv("RAG_MAX_EMPLOYEE_FAISS_DISTANCE", "1.5")),
+        )
         super().__init__(
             vector_store=vector_store or EmployeeVectorStore(
                 "data/vector_store/employees"
