@@ -1,1 +1,28 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Upload employees · Enterprise Knowledge Agent</title><link rel="stylesheet" href="/ui/styles.css"></head><body data-page="operation" data-collection="employees" data-operation="upload"><header class="topbar"><a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a><nav class="nav"><a href="/ui/policies-upload.html">Policies</a><a class="active" href="/ui/employees-upload.html">Employees</a><a href="/docs">API docs</a></nav></header><main class="page"><div class="breadcrumbs"><a href="/ui/">Home</a> / Employees / Upload</div><div class="eyebrow">Employees</div><h1>Ingest employee data</h1><p class="lead">Upload an Excel spreadsheet to write employee records to Neo4j and refresh the FAISS directory index.</p><section class="panel"><h2>Upload spreadsheet</h2><form id="operation-form"><label for="file">Excel file</label><input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required><button type="submit">Upload and ingest</button></form><div id="result" class="result"></div></section><section class="grid"><a class="card" href="/ui/employees-search.html"><h2>Search employees</h2><span class="action">Search directory →</span></a><a class="card" href="/ui/employees-ask.html"><h2>Ask a question</h2><span class="action">Ask directory →</span></a></section></main><script src="/ui/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Upload employees · Enterprise Knowledge Agent</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+  </head>
+  <body data-page="operation" data-collection="employees" data-operation="upload">
+    <header class="topbar">
+      <a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a>
+      <nav class="nav"><a href="/ui/policies-upload.html">Policies</a><a class="active" href="/ui/employees-upload.html">Employees</a><a href="/docs">API docs</a></nav>
+    </header>
+    <main class="page">
+      <div class="breadcrumbs"><a href="/ui/">Home</a> / Employees / Upload</div>
+      <div class="eyebrow">Employees</div>
+      <h1>Ingest employee data</h1>
+      <p class="lead">Upload an Excel spreadsheet to write employee records and persistent vector embeddings to Neo4j.</p>
+      <section class="panel">
+        <h2>Upload spreadsheet</h2>
+        <form id="operation-form"><label for="file">Excel file</label><input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required><button type="submit">Upload and ingest</button></form>
+        <div id="result" class="result"></div>
+      </section>
+      <section class="grid"><a class="card" href="/ui/employees-search.html"><h2>Search employees</h2><span class="action">Search directory →</span></a><a class="card" href="/ui/employees-ask.html"><h2>Ask a question</h2><span class="action">Ask directory →</span></a></section>
+    </main>
+    <script src="/ui/app.js"></script>
+  </body>
+</html>

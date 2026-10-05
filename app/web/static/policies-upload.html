@@ -1,1 +1,28 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Upload policy · Enterprise Knowledge Agent</title><link rel="stylesheet" href="/ui/styles.css"></head><body data-page="operation" data-collection="policies" data-operation="upload"><header class="topbar"><a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a><nav class="nav"><a class="active" href="/ui/policies-upload.html">Policies</a><a href="/ui/employees-upload.html">Employees</a><a href="/docs">API docs</a></nav></header><main class="page"><div class="breadcrumbs"><a href="/ui/">Home</a> / Policies / Upload</div><div class="eyebrow">Policies</div><h1>Ingest a policy PDF</h1><p class="lead">The file is chunked, indexed in FAISS, and ready for source-backed search.</p><section class="panel"><h2>Upload policy</h2><form id="operation-form"><label for="file">PDF file</label><input id="file" type="file" accept="application/pdf,.pdf" required><button type="submit">Upload and index</button></form><div id="result" class="result"></div></section><section class="grid"><a class="card" href="/ui/policies-search.html"><h2>Search evidence</h2><span class="action">Search policies →</span></a><a class="card" href="/ui/policies-ask.html"><h2>Ask a question</h2><span class="action">Ask policies →</span></a></section></main><script src="/ui/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Upload policy · Enterprise Knowledge Agent</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+  </head>
+  <body data-page="operation" data-collection="policies" data-operation="upload">
+    <header class="topbar">
+      <a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a>
+      <nav class="nav"><a class="active" href="/ui/policies-upload.html">Policies</a><a href="/ui/employees-upload.html">Employees</a><a href="/docs">API docs</a></nav>
+    </header>
+    <main class="page">
+      <div class="breadcrumbs"><a href="/ui/">Home</a> / Policies / Upload</div>
+      <div class="eyebrow">Policies</div>
+      <h1>Ingest a policy PDF</h1>
+      <p class="lead">The file is chunked, stored in Neo4j, and ready for source-backed search.</p>
+      <section class="panel">
+        <h2>Upload policy</h2>
+        <form id="operation-form"><label for="file">PDF file</label><input id="file" type="file" accept="application/pdf,.pdf" required><button type="submit">Upload and index</button></form>
+        <div id="result" class="result"></div>
+      </section>
+      <section class="grid"><a class="card" href="/ui/policies-search.html"><h2>Search evidence</h2><span class="action">Search policies →</span></a><a class="card" href="/ui/policies-ask.html"><h2>Ask a question</h2><span class="action">Ask policies →</span></a></section>
+    </main>
+    <script src="/ui/app.js"></script>
+  </body>
+</html>

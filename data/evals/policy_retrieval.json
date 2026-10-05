@@ -1,0 +1,17 @@
+[
+  {
+    "question": "What is the travel reimbursement policy?",
+    "expected_policy_type": "Finance",
+    "expected_evidence_terms": ["travel", "expense"]
+  },
+  {
+    "question": "Who is responsible for cyber safety?",
+    "expected_policy_type": "IT",
+    "expected_evidence_terms": ["roles", "responsibilities"]
+  },
+  {
+    "question": "What documents are required to onboard a supplier?",
+    "expected_policy_type": "Procurement",
+    "expected_evidence_terms": ["supplier", "onboard"]
+  }
+]

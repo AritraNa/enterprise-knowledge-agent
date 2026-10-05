@@ -44,7 +44,7 @@ function renderSearch(data) {
     title.textContent = item.section;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = `${item.source_document}${item.page ? ` · page ${item.page}` : ""} · distance ${item.distance.toFixed(3)}`;
+    meta.textContent = `${item.source_document}${item.page ? ` · page ${item.page}` : ""} · similarity ${item.score.toFixed(3)}`;
     const content = document.createElement("div");
     content.className = "content";
     const fullContent = item.content.trim();
