@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "faiss-cpu>=1.15.1",
     "fastapi>=0.142.1",
     "gradio>=6.29.0",
     "langchain>=1.4.3",
@@ -16,7 +15,6 @@ dependencies = [
     "langchain-community>=0.4.2",
     "langchain-core>=1.6.6",
     "langchain-google-genai>=4.4.0",
-    "langchain-huggingface>=1.2.2",
     "langchain-openai>=1.6.6",
     "langchain-text-splitters>=1.1.2",
     "langgraph>=1.2.12",
@@ -27,7 +25,6 @@ dependencies = [
     "pypdf>=6.19.0",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
-    "sentence-transformers>=6.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
 

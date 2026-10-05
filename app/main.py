@@ -12,12 +12,8 @@ from .retrieval.policy_vector_store import PolicyVectorStore
 from .workflows.policy_rag import PolicyRAGWorkflow
 
 
-VECTOR_STORE_PATH = "data/vector_store/employees"
-POLICY_VECTOR_STORE_PATH = "data/vector_store/policies"
-
-
 def ingest(source_file: str) -> None:
-    """Import the spreadsheet into Neo4j and refresh the FAISS index."""
+    """Import the spreadsheet into Neo4j and refresh employee embeddings."""
     store = Neo4jStore()
 
     try:
@@ -27,48 +23,46 @@ def ingest(source_file: str) -> None:
         importer = EmployeeImporter(
             EmployeeRepository(store.driver),
             IngestionJobRepository(store.driver),
-            EmployeeVectorStore(VECTOR_STORE_PATH),
+            EmployeeVectorStore(driver=store.driver),
         )
         count = importer.import_file(source_file)
-        print(f"Imported {count} employees into Neo4j and FAISS.")
+        print(f"Imported {count} employees into Neo4j and its vector index.")
     finally:
         store.close()
 
 
 def search(query: str, limit: int) -> None:
-    """Print employee matches from the persisted FAISS index."""
-    results = EmployeeVectorStore(VECTOR_STORE_PATH).search_with_scores(query, limit)
+    """Print employee matches from Neo4j's vector index."""
+    results = EmployeeVectorStore().search_with_scores(query, limit)
 
     if not results:
-        print("No FAISS index or matching employee documents found. Run ingest first.")
+        print("No matching employee documents found. Run ingest first.")
         return
 
-    for position, (document, distance) in enumerate(results, start=1):
+    for position, (document, score) in enumerate(results, start=1):
         employee_id = document.metadata["employee_id"]
-        print(f"\n{position}. {employee_id} (FAISS distance: {distance:.4f})")
+        print(f"\n{position}. {employee_id} (similarity: {score:.4f})")
         print(document.page_content)
 
 
 def ingest_policy(source_file: str) -> None:
     """Extract, section, chunk, and index a policy PDF."""
     chunks = PolicyPDFImporter().load(source_file)
-    PolicyVectorStore(POLICY_VECTOR_STORE_PATH).replace_source(chunks)
+    PolicyVectorStore().replace_source(chunks)
     print(f"Indexed {len(chunks)} chunks from {source_file}.")
 
 
 def search_policy(query: str, limit: int) -> None:
-    """Print source-backed policy evidence from the local FAISS index."""
-    results = PolicyVectorStore(POLICY_VECTOR_STORE_PATH).search_with_scores(
-        query, limit
-    )
+    """Print source-backed policy evidence from Neo4j's vector index."""
+    results = PolicyVectorStore().search_with_scores(query, limit)
 
     if not results:
         print("No policy index or matching evidence found. Run ingest-policy first.")
         return
 
-    for position, (document, distance) in enumerate(results, start=1):
+    for position, (document, score) in enumerate(results, start=1):
         metadata = document.metadata
-        print(f"\nEvidence {position} (FAISS distance: {distance:.4f})")
+        print(f"\nEvidence {position} (similarity: {score:.4f})")
         print(f"Source document: {metadata['source_document']}")
         print(f"Section: {metadata['section']}")
         print(f"Page: {metadata['page']}")
@@ -100,14 +94,14 @@ def main() -> None:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    ingest_command = commands.add_parser("ingest", help="Import Excel into Neo4j and FAISS")
+    ingest_command = commands.add_parser("ingest", help="Import Excel into Neo4j")
     ingest_command.add_argument(
         "--source",
         default="data/raw/employees.xlsx",
         help="Path to the employee Excel file",
     )
 
-    search_command = commands.add_parser("search", help="Search the local FAISS index")
+    search_command = commands.add_parser("search", help="Search Neo4j employee vectors")
     search_command.add_argument("query", help="Natural-language employee search query")
     search_command.add_argument(
         "--limit",
@@ -117,14 +111,14 @@ def main() -> None:
     )
 
     policy_ingest_command = commands.add_parser(
-        "ingest-policy", help="Extract and index a policy PDF into FAISS"
+        "ingest-policy", help="Extract and index a policy PDF into Neo4j"
     )
     policy_ingest_command.add_argument(
         "source_file", help="Path to a policy PDF, for example data/raw/policies/hr.pdf"
     )
 
     policy_search_command = commands.add_parser(
-        "search-policy", help="Search the local policy FAISS index with citations"
+        "search-policy", help="Search policy evidence in Neo4j with citations"
     )
     policy_search_command.add_argument("query", help="Natural-language policy question")
     policy_search_command.add_argument(

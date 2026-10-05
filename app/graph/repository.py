@@ -22,6 +22,12 @@ class EmployeeRepository:
             e.employee_id = $employee_id,
             e.name = $name,
             e.email = $email,
+            e.department_id = $department_id,
+            e.job_title = $job_title,
+            e.location = $location,
+            e.manager_id = $manager_id,
+            e.skills = $skills,
+            e.experience_summary = $experience_summary,
             e.salary = $salary
 
         MERGE (d:Department {id: $department_id})
@@ -50,6 +56,11 @@ class EmployeeRepository:
                 email=str(employee.email) if employee.email else None,
                 department_id=employee.department_id,
                 department_name=employee.department_name,
+                job_title=employee.job_title,
+                location=employee.location,
+                manager_id=employee.manager_id,
+                skills=employee.skills,
+                experience_summary=employee.experience_summary,
                 source_id=source_record.id,
                 source_file=source_record.source_file,
                 sheet_name=source_record.sheet_name,

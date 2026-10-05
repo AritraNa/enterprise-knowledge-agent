@@ -1,1 +1,1 @@
-"""Semantic employee search backed by a local FAISS index."""
+"""Semantic retrieval backed by persistent Neo4j vector indexes."""

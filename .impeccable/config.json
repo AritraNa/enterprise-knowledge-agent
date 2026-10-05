@@ -5,5 +5,29 @@
       "maxFindings": 5,
       "maxChars": 8000
     }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "app/web/static/employees-upload.html"
+        ],
+        "createdAt": "2026-10-05T04:17:56.152Z",
+        "reason": "False positive: styles.css defines h1 at min 2rem and h2 at 1.25rem (1.6x hierarchy)."
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "app/web/static/policies-upload.html"
+        ],
+        "createdAt": "2026-10-05T04:17:56.170Z",
+        "reason": "False positive: styles.css defines h1 at min 2rem and h2 at 1.25rem (1.6x hierarchy)."
+      }
+    ]
   }
 }

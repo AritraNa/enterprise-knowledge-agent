@@ -11,13 +11,11 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
 
     def __init__(self, vector_store: EmployeeVectorStore | None = None, **kwargs):
         kwargs.setdefault(
-            "max_evidence_distance",
-            float(os.getenv("RAG_MAX_EMPLOYEE_FAISS_DISTANCE", "1.5")),
+            "min_similarity_score",
+            float(os.getenv("RAG_MIN_EMPLOYEE_SIMILARITY_SCORE", "0.4")),
         )
         super().__init__(
-            vector_store=vector_store or EmployeeVectorStore(
-                "data/vector_store/employees"
-            ),
+            vector_store=vector_store or EmployeeVectorStore(),
             **kwargs,
         )
 
@@ -27,14 +25,14 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
         )
         evidence: list[Evidence] = []
 
-        for citation_id, (document, distance) in enumerate(results, start=1):
-            evidence.append(self._employee_evidence(document, distance, citation_id))
+        for citation_id, (document, score) in enumerate(results, start=1):
+            evidence.append(self._employee_evidence(document, score, citation_id))
 
         return {"evidence": evidence}
 
     @staticmethod
     def _employee_evidence(
-        document: Document, distance: float, citation_id: int
+        document: Document, score: float, citation_id: int
     ) -> Evidence:
         metadata = document.metadata
         name = document.page_content.splitlines()[0].removeprefix("Employee: ")
@@ -45,7 +43,7 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
             "section": f"Employee record: {name} ({employee_id})",
             "page": 0,
             "content": document.page_content,
-            "distance": float(distance),
+            "score": float(score),
         }
 
     def _generate_answer(self, state: PolicyRAGState) -> PolicyRAGState:

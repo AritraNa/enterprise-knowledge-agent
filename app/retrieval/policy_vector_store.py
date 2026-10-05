@@ -1,88 +1,186 @@
 import hashlib
-from pathlib import Path
+import os
+from datetime import UTC, datetime
 
-from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from neo4j import GraphDatabase
 
-from app.retrieval.employee_vector_store import DEFAULT_EMBEDDING_MODEL
+from app.retrieval.embedding_utils import create_embeddings
 
 
 class PolicyVectorStore:
-    """Persist policy chunks in a local FAISS index with source metadata."""
+    """Persistent policy retrieval backed by a Neo4j vector index."""
 
-    def __init__(
-        self,
-        index_path: str | Path,
-        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-    ):
-        self.index_path = Path(index_path)
-        self.embedding_model = embedding_model
-        self._embeddings: HuggingFaceEmbeddings | None = None
-        self._store: FAISS | None = None
+    INDEX_NAME = "policy_chunk_embedding_index"
+    INDEX_LABEL = "PolicyChunk"
+    EMBEDDING_PROPERTY = "embedding"
+
+    def __init__(self, driver=None):
+        self.driver = driver or GraphDatabase.driver(
+            os.environ["NEO4J_URI"],
+            auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"]),
+        )
+        self.dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
+        self._embeddings: OpenAIEmbeddings | None = None
+        self._ensure_vector_index()
 
     @property
-    def embeddings(self) -> HuggingFaceEmbeddings:
+    def embeddings(self) -> OpenAIEmbeddings:
         if self._embeddings is None:
-            self._embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model)
+            self._embeddings = create_embeddings()
         return self._embeddings
 
-    def replace_source(self, chunks: list[Document]) -> None:
-        """Replace every chunk for one source document, avoiding stale evidence."""
+    def replace_source(
+        self, chunks: list[Document], *, source_hash: str, policy_type: str = "General",
+        owner_department: str | None = None, effective_date: str | None = None,
+        version: str | None = None,
+    ) -> None:
+        """Persist a versioned policy document, sections, and chunks."""
         if not chunks:
             return
 
-        source_id = chunks[0].metadata["source_id"]
-        source_name = chunks[0].metadata["source_document"]
-        store = self._load()
-
-        if store is None:
-            self._store = FAISS.from_documents(
-                chunks,
-                self.embeddings,
-                ids=[self._document_id(chunk) for chunk in chunks],
-            )
-        else:
-            stored_ids = [
-                document_id
-                for document_id, document in store.docstore._dict.items()
-                if document.metadata.get("source_id") == source_id
-                or (
-                    document.metadata.get("source_id") is None
-                    and document.metadata.get("source_document") == source_name
-                )
-            ]
-            if stored_ids:
-                store.delete(stored_ids)
-            store.add_documents(
-                chunks,
-                ids=[self._document_id(chunk) for chunk in chunks],
-            )
-
-        self.index_path.mkdir(parents=True, exist_ok=True)
-        self._store.save_local(str(self.index_path))
+        source_document = chunks[0].metadata["source_document"]
+        document_id = f"policy_{source_hash}"
+        self._upsert_document(document_id, source_hash, source_document, policy_type,
+                              owner_department, effective_date, version or source_hash[:12])
+        vectors = self.embeddings.embed_documents(
+            [chunk.page_content for chunk in chunks]
+        )
+        rows = [
+            {
+                "id": self._document_id(chunk),
+                "document_id": document_id,
+                "section_id": self._section_id(document_id, chunk),
+                "content": chunk.page_content,
+                "metadata": chunk.metadata,
+                "embedding": vector,
+            }
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]
+        query = """
+        UNWIND rows AS row
+        MATCH (document:PolicyDocument {id: row.document_id})
+        MERGE (section:PolicySection {id: row.section_id})
+        SET section.title = row.metadata.section, section.page = row.metadata.page
+        MERGE (document)-[:HAS_SECTION]->(section)
+        MERGE (chunk:PolicyChunk {id: row.id})
+        SET chunk.content = row.content, chunk.document_id = row.document_id,
+            chunk.source_id = row.metadata.source_id, chunk.source_document = row.metadata.source_document,
+            chunk.source_path = row.metadata.source_path, chunk.page = row.metadata.page,
+            chunk.section = row.metadata.section, chunk.start_index = row.metadata.start_index,
+            chunk.chunk_number = row.metadata.chunk_number, chunk.status = 'active',
+            chunk.embedding = row.embedding
+        MERGE (section)-[:HAS_CHUNK]->(chunk)
+        """
+        with self.driver.session() as session:
+            session.run(query, rows=rows).consume()
 
     def search_with_scores(
-        self, query: str, limit: int = 5
+        self, query: str, limit: int = 5, filters: dict | None = None
     ) -> list[tuple[Document, float]]:
-        store = self._load()
-        if store is None:
-            return []
-        return store.similarity_search_with_score(query, k=limit)
+        query_vector = self.embeddings.embed_query(query)
+        cypher = """
+        MATCH (chunk:PolicyChunk)
+        SEARCH chunk IN (
+            VECTOR INDEX policy_chunk_embedding_index
+            FOR $embedding
+            LIMIT $limit
+        ) SCORE AS score
+        MATCH (document:PolicyDocument)-[:HAS_SECTION]->(:PolicySection)-[:HAS_CHUNK]->(chunk)
+        RETURN chunk.content AS content,
+               chunk.source_document AS source_document,
+               chunk.source_id AS source_id,
+               chunk.source_path AS source_path,
+               chunk.page AS page,
+               chunk.section AS section,
+               chunk.start_index AS start_index,
+               chunk.chunk_number AS chunk_number,
+               document.policy_type AS policy_type,
+               document.owner_department AS owner_department,
+               document.effective_date AS effective_date,
+               document.version AS version,
+               document.status AS status,
+               score
+        """
+        with self.driver.session() as session:
+            records = session.run(
+                cypher,
+                limit=max(limit * 5, 20),
+                embedding=query_vector,
+            ).data()
+        results = [
+            (
+                Document(
+                    page_content=record["content"],
+                    metadata={
+                        "source_document": record["source_document"],
+                        "source_id": record["source_id"],
+                        "source_path": record["source_path"],
+                        "page": record["page"],
+                        "section": record["section"],
+                        "start_index": record["start_index"],
+                        "chunk_number": record["chunk_number"],
+                        "policy_type": record["policy_type"],
+                        "owner_department": record["owner_department"],
+                        "effective_date": record["effective_date"],
+                        "version": record["version"],
+                        "status": record["status"],
+                    },
+                ),
+                float(record["score"]),
+            )
+            for record in records
+        ]
+        filters = filters or {"status": "active"}
+        return [
+            result for result in results
+            if all(result[0].metadata.get(key) == value for key, value in filters.items() if value is not None)
+        ][:limit]
 
-    def _load(self) -> FAISS | None:
-        if self._store is not None:
-            return self._store
-        if not (self.index_path / "index.faiss").exists():
-            return None
+    def _ensure_vector_index(self) -> None:
+        query = f"""
+        CREATE VECTOR INDEX {self.INDEX_NAME} IF NOT EXISTS
+        FOR (chunk:{self.INDEX_LABEL}) ON (chunk.{self.EMBEDDING_PROPERTY})
+        OPTIONS {{indexConfig: {{
+            `vector.dimensions`: {self.dimensions},
+            `vector.similarity_function`: 'cosine'
+        }}}}
+        """
+        with self.driver.session() as session:
+            session.run(query).consume()
+            session.run(
+                "CREATE FULLTEXT INDEX policy_chunk_fulltext IF NOT EXISTS "
+                "FOR (chunk:PolicyChunk) ON EACH [chunk.content, chunk.section, chunk.source_document]"
+            ).consume()
 
-        # This index is generated by this application. Do not load untrusted indexes.
-        self._store = FAISS.load_local(
-            str(self.index_path),
-            self.embeddings,
-            allow_dangerous_deserialization=True,
-        )
-        return self._store
+    def _upsert_document(
+        self, document_id: str, source_hash: str, source_document: str,
+        policy_type: str, owner_department: str | None, effective_date: str | None,
+        version: str,
+    ) -> None:
+        query = """
+        MERGE (document:PolicyDocument {id: $document_id})
+        ON CREATE SET document.created_at = $now
+        SET document.source_hash = $source_hash, document.source_document = $source_document,
+            document.policy_type = $policy_type, document.owner_department = $owner_department,
+            document.effective_date = $effective_date, document.version = $version,
+            document.status = 'active', document.updated_at = $now
+        """
+        with self.driver.session() as session:
+            session.run(query, document_id=document_id, source_hash=source_hash,
+                        source_document=source_document, policy_type=policy_type,
+                        owner_department=owner_department, effective_date=effective_date,
+                        version=version, now=datetime.now(UTC).isoformat()).consume()
+            session.run(
+                """
+                MATCH (previous:PolicyDocument {source_document: $source_document, status: 'active'})
+                WHERE previous.id <> $document_id
+                SET previous.status = 'superseded', previous.superseded_at = $now
+                """,
+                source_document=source_document, document_id=document_id,
+                now=datetime.now(UTC).isoformat(),
+            ).consume()
 
     @staticmethod
     def _document_id(chunk: Document) -> str:
@@ -95,4 +193,9 @@ class PolicyVectorStore:
                 chunk.page_content,
             ]
         )
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _section_id(document_id: str, chunk: Document) -> str:
+        identity = f"{document_id}|{chunk.metadata['page']}|{chunk.metadata['section']}"
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()

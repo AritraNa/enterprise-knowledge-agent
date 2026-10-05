@@ -1,4 +1,5 @@
 import os
+from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -21,8 +22,6 @@ from app.workflows.policy_rag import PolicyRAGWorkflow
 
 load_dotenv()
 
-EMPLOYEE_INDEX_PATH = "data/vector_store/employees"
-POLICY_INDEX_PATH = "data/vector_store/policies"
 POLICY_UPLOAD_DIR = Path("data/uploads/policies")
 EMPLOYEE_UPLOAD_DIR = Path("data/uploads/employees")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
@@ -35,15 +34,34 @@ app = FastAPI(
 
 app.mount("/ui", StaticFiles(directory="app/web/static", html=True), name="ui")
 
+# These shared stores reuse the Neo4j driver and Ollama embedding client.
+_policy_vector_store = PolicyVectorStore()
+_employee_vector_store = EmployeeVectorStore()
+_policy_workflow = PolicyRAGWorkflow(vector_store=_policy_vector_store)
+_employee_workflow = EmployeeRAGWorkflow(vector_store=_employee_vector_store)
+
+
+@app.on_event("shutdown")
+def close_vector_store_drivers() -> None:
+    _policy_vector_store.driver.close()
+    _employee_vector_store.driver.close()
+
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2_000)
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class PolicyQueryRequest(QueryRequest):
+    policy_type: str | None = None
+    owner_department: str | None = None
+    status: str | None = "active"
+    effective_date: str | None = None
+
+
 class SearchResult(BaseModel):
     content: str
-    distance: float
+    score: float
     source_document: str
     section: str
     page: int | None = None
@@ -137,31 +155,43 @@ async def upload_employees(
 
 
 @app.post("/v1/policies/search", response_model=SearchResponse)
-def search_policies(request: QueryRequest) -> SearchResponse:
-    results = PolicyVectorStore(POLICY_INDEX_PATH).search_with_scores(
-        request.query, request.limit
+def search_policies(request: PolicyQueryRequest) -> SearchResponse:
+    results = _policy_vector_store.search_with_scores(
+        request.query, request.limit,
+        filters={
+            "policy_type": request.policy_type,
+            "owner_department": request.owner_department,
+            "status": request.status,
+        },
     )
     return SearchResponse(
         collection="policies",
-        results=[_policy_search_result(document, distance) for document, distance in results],
+    results=[_policy_search_result(document, score) for document, score in results],
     )
 
 
 @app.post("/v1/employees/search", response_model=SearchResponse)
 def search_employees(request: QueryRequest) -> SearchResponse:
-    results = EmployeeVectorStore(EMPLOYEE_INDEX_PATH).search_with_scores(
+    results = _employee_vector_store.search_with_scores(
         request.query, request.limit
     )
     return SearchResponse(
         collection="employees",
-        results=[_employee_search_result(document, distance) for document, distance in results],
+    results=[_employee_search_result(document, score) for document, score in results],
     )
 
 
 @app.post("/v1/policies/ask", response_model=AskResponse)
-def ask_policies(request: QueryRequest) -> AskResponse:
+def ask_policies(request: PolicyQueryRequest) -> AskResponse:
     try:
-        result = PolicyRAGWorkflow().ask(request.query, request.limit)
+        result = _policy_workflow.ask(
+            request.query, request.limit,
+            filters={
+                "policy_type": request.policy_type,
+                "owner_department": request.owner_department,
+                "status": request.status,
+            },
+        )
     except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -173,7 +203,7 @@ def ask_policies(request: QueryRequest) -> AskResponse:
 @app.post("/v1/employees/ask", response_model=AskResponse)
 def ask_employees(request: QueryRequest) -> AskResponse:
     try:
-        result = EmployeeRAGWorkflow().ask(request.query, request.limit)
+        result = _employee_workflow.ask(request.query, request.limit)
     except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -218,8 +248,28 @@ async def _save_upload(
 
 def _ingest_policy(path: Path, source_name: str) -> int:
     chunks = PolicyPDFImporter().load(path, source_name=source_name)
-    PolicyVectorStore(POLICY_INDEX_PATH).replace_source(chunks)
+    source_hash = sha256(path.read_bytes()).hexdigest()
+    policy_type = _infer_policy_type(source_name)
+    _policy_vector_store.replace_source(
+        chunks, source_hash=source_hash, policy_type=policy_type
+    )
     return len(chunks)
+
+
+def _infer_policy_type(filename: str) -> str:
+    name = filename.casefold()
+    for keyword, policy_type in {
+        "travel": "Finance",
+        "expense": "Finance",
+        "hr": "HR",
+        "leave": "HR",
+        "cyber": "IT",
+        "security": "IT",
+        "procurement": "Procurement",
+    }.items():
+        if keyword in name:
+            return policy_type
+    return "General"
 
 
 def _ingest_employees(path: Path) -> int:
@@ -230,18 +280,18 @@ def _ingest_employees(path: Path) -> int:
         importer = EmployeeImporter(
             EmployeeRepository(store.driver),
             IngestionJobRepository(store.driver),
-            EmployeeVectorStore(EMPLOYEE_INDEX_PATH),
+            _employee_vector_store,
         )
         return importer.import_file(str(path))
     finally:
         store.close()
 
 
-def _policy_search_result(document, distance: float) -> SearchResult:
+def _policy_search_result(document, score: float) -> SearchResult:
     metadata = document.metadata
     return SearchResult(
         content=document.page_content,
-        distance=float(distance),
+        score=float(score),
         source_document=metadata["source_document"],
         section=metadata["section"],
         page=metadata["page"],
@@ -249,12 +299,12 @@ def _policy_search_result(document, distance: float) -> SearchResult:
     )
 
 
-def _employee_search_result(document, distance: float) -> SearchResult:
+def _employee_search_result(document, score: float) -> SearchResult:
     metadata = document.metadata
     name = document.page_content.splitlines()[0].removeprefix("Employee: ")
     return SearchResult(
         content=document.page_content,
-        distance=float(distance),
+        score=float(score),
         source_document="Employee directory",
         section=f"Employee record: {name} ({metadata['employee_id']})",
         metadata=metadata,

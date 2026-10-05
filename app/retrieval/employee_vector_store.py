@@ -1,17 +1,131 @@
-from pathlib import Path
+import os
 
-from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from neo4j import GraphDatabase
 
 from app.models.employee import Employee
-from app.retrieval.embedding_utils import (
-    create_embeddings,
-    rebuild_if_embedding_config_changed,
-    save_store,
-)
+from app.retrieval.embedding_utils import create_embeddings
 
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+class EmployeeVectorStore:
+    """Persistent employee retrieval backed by a Neo4j vector index."""
+
+    INDEX_NAME = "employee_embedding_index"
+    INDEX_LABEL = "Employee"
+    EMBEDDING_PROPERTY = "embedding"
+
+    def __init__(self, driver=None):
+        self.driver = driver or GraphDatabase.driver(
+            os.environ["NEO4J_URI"],
+            auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"]),
+        )
+        self.dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
+        self._embeddings: OpenAIEmbeddings | None = None
+        self._ensure_vector_index()
+
+    @property
+    def embeddings(self) -> OpenAIEmbeddings:
+        if self._embeddings is None:
+            self._embeddings = create_embeddings()
+        return self._embeddings
+
+    def upsert_employees(self, employees: list[Employee]) -> None:
+        if not employees:
+            return
+
+        documents = [employee_to_document(employee) for employee in employees]
+        vectors = self.embeddings.embed_documents(
+            [document.page_content for document in documents]
+        )
+        rows = [
+            {"id": employee.id, "content": document.page_content, "embedding": vector}
+            for employee, document, vector in zip(employees, documents, vectors, strict=True)
+        ]
+        query = """
+        UNWIND $rows AS row
+        MATCH (employee:Employee {id: row.id})
+        SET employee.search_content = row.content,
+            employee.embedding = row.embedding
+        """
+        with self.driver.session() as session:
+            session.run(query, rows=rows).consume()
+
+    def search_with_scores(
+        self, query: str, limit: int = 5
+    ) -> list[tuple[Document, float]]:
+        query_vector = self.embeddings.embed_query(query)
+        cypher = """
+        MATCH (employee:Employee)
+        SEARCH employee IN (
+            VECTOR INDEX employee_embedding_index
+            FOR $embedding
+            LIMIT $limit
+        ) SCORE AS score
+        RETURN employee.id AS employee_id,
+               employee.department_id AS department_id,
+               employee.location AS location,
+               employee.job_title AS job_title,
+               employee.salary AS salary,
+               employee.search_content AS content,
+               score
+        """
+        with self.driver.session() as session:
+            records = session.run(
+                cypher,
+                limit=max(limit, 50),
+                embedding=query_vector,
+            ).data()
+
+        results = [
+            (
+                Document(
+                    page_content=record["content"],
+                    metadata={
+                        "employee_id": record["employee_id"],
+                        "department_id": record["department_id"],
+                        "department": None,
+                        "location": record["location"],
+                        "job_title": record["job_title"],
+                        "salary": record["salary"],
+                    },
+                ),
+                float(record["score"]),
+            )
+            for record in records
+            if record["content"]
+        ]
+        exact_skill_matches = [
+            result for result in results if self._matches_listed_skill(query, result[0])
+        ]
+        semantic_matches = [
+            result for result in results if result not in exact_skill_matches
+        ]
+        return (exact_skill_matches + semantic_matches)[:limit]
+
+    def _ensure_vector_index(self) -> None:
+        query = f"""
+        CREATE VECTOR INDEX {self.INDEX_NAME} IF NOT EXISTS
+        FOR (employee:{self.INDEX_LABEL}) ON (employee.{self.EMBEDDING_PROPERTY})
+        OPTIONS {{indexConfig: {{
+            `vector.dimensions`: {self.dimensions},
+            `vector.similarity_function`: 'cosine'
+        }}}}
+        """
+        with self.driver.session() as session:
+            session.run(query).consume()
+
+    @staticmethod
+    def _matches_listed_skill(query: str, document: Document) -> bool:
+        query_text = query.casefold()
+        for line in document.page_content.splitlines():
+            if line.startswith("Skills:"):
+                skills = (
+                    skill.strip().casefold()
+                    for skill in line.removeprefix("Skills:").split(",")
+                )
+                return any(skill and skill in query_text for skill in skills)
+        return False
 
 
 def employee_to_document(employee: Employee) -> Document:
@@ -20,7 +134,6 @@ def employee_to_document(employee: Employee) -> Document:
         f"Employee: {employee.name}",
         f"Department: {employee.department_name}",
     ]
-
     if employee.job_title:
         lines.append(f"Job title: {employee.job_title}")
     if employee.location:
@@ -44,99 +157,3 @@ def employee_to_document(employee: Employee) -> Document:
             "salary": employee.salary,
         },
     )
-
-
-class EmployeeVectorStore:
-    """Persist and update employee documents in a local FAISS index."""
-
-    def __init__(
-        self,
-        index_path: str | Path,
-        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-    ):
-        self.index_path = Path(index_path)
-        self.embedding_model = embedding_model
-        self._embeddings: HuggingFaceEmbeddings | None = None
-        self._store: FAISS | None = None
-
-    @property
-    def embeddings(self) -> HuggingFaceEmbeddings:
-        """Load the model only when the index is first used."""
-        if self._embeddings is None:
-            self._embeddings = create_embeddings(self.embedding_model)
-        return self._embeddings
-
-    def upsert_employees(self, employees: list[Employee]) -> None:
-        if not employees:
-            return
-
-        documents = [employee_to_document(employee) for employee in employees]
-        ids = [employee.id for employee in employees]
-        store = self._load()
-
-        if store is None:
-            self._store = FAISS.from_documents(documents, self.embeddings, ids=ids)
-        else:
-            existing_ids = set(store.index_to_docstore_id.values())
-            ids_to_replace = list(existing_ids.intersection(ids))
-            if ids_to_replace:
-                store.delete(ids_to_replace)
-            store.add_documents(documents, ids=ids)
-
-        save_store(self.index_path, self._store)
-
-    def search(self, query: str, limit: int = 5) -> list[Document]:
-        store = self._load()
-        if store is None:
-            return []
-        return store.similarity_search(query, k=limit)
-
-    def search_with_scores(
-        self, query: str, limit: int = 5
-    ) -> list[tuple[Document, float]]:
-        """Return matching employee documents and their FAISS distances.
-
-        A lower distance means the document is a closer semantic match.
-        """
-        store = self._load()
-        if store is None:
-            return []
-        candidate_limit = min(store.index.ntotal, max(limit, 50))
-        results = store.similarity_search_with_score(query, k=candidate_limit)
-        exact_skill_matches = [
-            result for result in results if self._matches_listed_skill(query, result[0])
-        ]
-        semantic_matches = [
-            result for result in results if result not in exact_skill_matches
-        ]
-        return (exact_skill_matches + semantic_matches)[:limit]
-
-    def _load(self) -> FAISS | None:
-        if self._store is not None:
-            return self._store
-
-        if not (self.index_path / "index.faiss").exists():
-            return None
-
-        # This index is produced only by this application. Do not load indexes
-        # obtained from untrusted sources.
-        loaded_store = FAISS.load_local(
-            str(self.index_path),
-            self.embeddings,
-            allow_dangerous_deserialization=True,
-        )
-        self._store = rebuild_if_embedding_config_changed(
-            self.index_path, loaded_store, self.embeddings
-        )
-        return self._store
-
-    @staticmethod
-    def _matches_listed_skill(query: str, document: Document) -> bool:
-        """Prefer exact skills for a skill-specific employee question."""
-        query_text = query.casefold()
-        for line in document.page_content.splitlines():
-            if not line.startswith("Skills:"):
-                continue
-            skills = (skill.strip().casefold() for skill in line.removeprefix("Skills:").split(","))
-            return any(skill and skill in query_text for skill in skills)
-        return False

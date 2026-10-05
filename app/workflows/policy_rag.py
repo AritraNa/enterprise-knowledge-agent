@@ -14,7 +14,7 @@ class Evidence(TypedDict):
     section: str
     page: int
     content: str
-    distance: float
+    score: float
 
 
 class PolicyRAGState(TypedDict, total=False):
@@ -24,6 +24,7 @@ class PolicyRAGState(TypedDict, total=False):
     evidence_sufficient: bool
     answer: str
     citations: list[Evidence]
+    filters: dict[str, str | None]
 
 
 class PolicyRAGWorkflow:
@@ -33,22 +34,22 @@ class PolicyRAGWorkflow:
         self,
         vector_store: PolicyVectorStore | None = None,
         chat_model: ChatOpenAI | None = None,
-        max_evidence_distance: float | None = None,
+        min_similarity_score: float | None = None,
     ):
-        self.vector_store = vector_store or PolicyVectorStore(
-            "data/vector_store/policies"
-        )
+        self.vector_store = vector_store or PolicyVectorStore()
         self.chat_model = chat_model
-        self.max_evidence_distance = (
-            max_evidence_distance
-            if max_evidence_distance is not None
-            else float(os.getenv("RAG_MAX_FAISS_DISTANCE", "1.25"))
+        self.min_similarity_score = (
+            min_similarity_score
+            if min_similarity_score is not None
+            else float(os.getenv("RAG_MIN_SIMILARITY_SCORE", "0.4"))
         )
         self.graph = self._build_graph()
 
-    def ask(self, question: str, limit: int = 5) -> PolicyRAGState:
+    def ask(
+        self, question: str, limit: int = 5, filters: dict[str, str | None] | None = None
+    ) -> PolicyRAGState:
         """Run retrieval, evidence validation, and grounded answer generation."""
-        return self.graph.invoke({"question": question, "limit": limit})
+        return self.graph.invoke({"question": question, "limit": limit, "filters": filters or {}})
 
     def _build_graph(self):
         builder = StateGraph(PolicyRAGState)
@@ -73,11 +74,11 @@ class PolicyRAGWorkflow:
 
     def _retrieve_evidence(self, state: PolicyRAGState) -> PolicyRAGState:
         results = self.vector_store.search_with_scores(
-            state["question"], state.get("limit", 5)
+            state["question"], state.get("limit", 5), state.get("filters")
         )
         evidence: list[Evidence] = []
 
-        for citation_id, (document, distance) in enumerate(results, start=1):
+        for citation_id, (document, score) in enumerate(results, start=1):
             metadata = document.metadata
             evidence.append(
                 {
@@ -86,7 +87,7 @@ class PolicyRAGWorkflow:
                     "section": metadata["section"],
                     "page": metadata["page"],
                     "content": document.page_content,
-                    "distance": float(distance),
+                    "score": float(score),
                 }
             )
 
@@ -95,10 +96,10 @@ class PolicyRAGWorkflow:
     def _validate_evidence(self, state: PolicyRAGState) -> PolicyRAGState:
         """Refuse to generate when no retrieval result is relevant enough."""
         evidence = state.get("evidence", [])
-        best_distance = min((item["distance"] for item in evidence), default=float("inf"))
+        best_score = max((item["score"] for item in evidence), default=0.0)
         return {
             "evidence_sufficient": bool(evidence)
-            and best_distance <= self.max_evidence_distance
+            and best_score >= self.min_similarity_score
         }
 
     @staticmethod
