@@ -33,8 +33,13 @@ class PolicyVectorStore:
         return self._embeddings
 
     def replace_source(
-        self, chunks: list[Document], *, source_hash: str, policy_type: str = "General",
-        owner_department: str | None = None, effective_date: str | None = None,
+        self,
+        chunks: list[Document],
+        *,
+        source_hash: str,
+        policy_type: str = "General",
+        owner_department: str | None = None,
+        effective_date: str | None = None,
         version: str | None = None,
     ) -> None:
         """Persist a versioned policy document, sections, and chunks."""
@@ -43,8 +48,15 @@ class PolicyVectorStore:
 
         source_document = chunks[0].metadata["source_document"]
         document_id = f"policy_{source_hash}"
-        self._upsert_document(document_id, source_hash, source_document, policy_type,
-                              owner_department, effective_date, version or source_hash[:12])
+        self._upsert_document(
+            document_id,
+            source_hash,
+            source_document,
+            policy_type,
+            owner_department,
+            effective_date,
+            version or source_hash[:12],
+        )
         vectors = self.embeddings.embed_documents(
             [chunk.page_content for chunk in chunks]
         )
@@ -143,22 +155,41 @@ class PolicyVectorStore:
 
         # Semantic similarity is the primary signal; lexical relevance is a
         # boost for policy names, section headings, limits, and acronyms.
-        merged: dict[str, dict] = {record["id"]: {**record, "vector_score": float(record["score"])} for record in vector_records}
-        max_keyword_score = max((float(record["score"]) for record in keyword_records), default=1.0)
+        merged: dict[str, dict] = {
+            record["id"]: {**record, "vector_score": float(record["score"])}
+            for record in vector_records
+        }
+        max_keyword_score = max(
+            (float(record["score"]) for record in keyword_records), default=1.0
+        )
         for record in keyword_records:
             item = merged.setdefault(record["id"], {**record, "vector_score": 0.0})
             item["keyword_score"] = float(record["score"]) / max_keyword_score
 
         ranked = []
         for record in merged.values():
-            score = (0.80 * max(record["vector_score"], 0.0)) + (0.20 * record.get("keyword_score", 0.0))
+            score = (0.80 * max(record["vector_score"], 0.0)) + (
+                0.20 * record.get("keyword_score", 0.0)
+            )
             document = Document(
                 page_content=record["content"],
-                metadata={key: record[key] for key in (
-                    "source_document", "source_id", "source_path", "page", "section",
-                    "start_index", "chunk_number", "policy_type", "owner_department",
-                    "effective_date", "version", "status",
-                )},
+                metadata={
+                    key: record[key]
+                    for key in (
+                        "source_document",
+                        "source_id",
+                        "source_path",
+                        "page",
+                        "section",
+                        "start_index",
+                        "chunk_number",
+                        "policy_type",
+                        "owner_department",
+                        "effective_date",
+                        "version",
+                        "status",
+                    )
+                },
             )
             ranked.append((document, score))
         return sorted(ranked, key=lambda item: item[1], reverse=True)[:limit]
@@ -192,8 +223,13 @@ class PolicyVectorStore:
             ).consume()
 
     def _upsert_document(
-        self, document_id: str, source_hash: str, source_document: str,
-        policy_type: str, owner_department: str | None, effective_date: str | None,
+        self,
+        document_id: str,
+        source_hash: str,
+        source_document: str,
+        policy_type: str,
+        owner_department: str | None,
+        effective_date: str | None,
         version: str,
     ) -> None:
         query = """
@@ -205,17 +241,25 @@ class PolicyVectorStore:
             document.status = 'active', document.updated_at = $now
         """
         with self.driver.session() as session:
-            session.run(query, document_id=document_id, source_hash=source_hash,
-                        source_document=source_document, policy_type=policy_type,
-                        owner_department=owner_department, effective_date=effective_date,
-                        version=version, now=datetime.now(UTC).isoformat()).consume()
+            session.run(
+                query,
+                document_id=document_id,
+                source_hash=source_hash,
+                source_document=source_document,
+                policy_type=policy_type,
+                owner_department=owner_department,
+                effective_date=effective_date,
+                version=version,
+                now=datetime.now(UTC).isoformat(),
+            ).consume()
             session.run(
                 """
                 MATCH (previous:PolicyDocument {source_document: $source_document, status: 'active'})
                 WHERE previous.id <> $document_id
                 SET previous.status = 'superseded', previous.superseded_at = $now
                 """,
-                source_document=source_document, document_id=document_id,
+                source_document=source_document,
+                document_id=document_id,
                 now=datetime.now(UTC).isoformat(),
             ).consume()
 
@@ -241,9 +285,22 @@ class PolicyVectorStore:
     @staticmethod
     def _keyword_query(query: str) -> str:
         """Create a safe full-text query without Lucene control characters."""
-        stop_words = {"a", "an", "are", "for", "how", "is", "of", "the", "to", "what", "who"}
+        stop_words = {
+            "a",
+            "an",
+            "are",
+            "for",
+            "how",
+            "is",
+            "of",
+            "the",
+            "to",
+            "what",
+            "who",
+        }
         terms = [
-            term for term in re.findall(r"[A-Za-z0-9]+", query.casefold())
+            term
+            for term in re.findall(r"[A-Za-z0-9]+", query.casefold())
             if term not in stop_words
         ]
         return " OR ".join(terms) or query

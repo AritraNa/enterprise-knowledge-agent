@@ -20,7 +20,6 @@ from app.retrieval.policy_vector_store import PolicyVectorStore
 from app.workflows.employee_rag import EmployeeRAGWorkflow
 from app.workflows.policy_rag import PolicyRAGWorkflow
 
-
 load_dotenv()
 
 POLICY_UPLOAD_DIR = Path("data/uploads/policies")
@@ -119,9 +118,7 @@ async def upload_policy(
     effective_date: Annotated[str | None, Form()] = None,
     version: Annotated[str | None, Form()] = None,
 ) -> IngestResponse:
-    stored_path, original_name = await _save_upload(
-        file, POLICY_UPLOAD_DIR, {".pdf"}
-    )
+    stored_path, original_name = await _save_upload(file, POLICY_UPLOAD_DIR, {".pdf"})
     try:
         records_indexed = await run_in_threadpool(
             _ingest_policy,
@@ -176,7 +173,8 @@ async def upload_employees(
 @app.post("/v1/policies/search", response_model=SearchResponse)
 def search_policies(request: PolicyQueryRequest) -> SearchResponse:
     results = _policy_vector_store.search_with_scores(
-        request.query, request.limit,
+        request.query,
+        request.limit,
         filters={
             "policy_type": request.policy_type,
             "owner_department": request.owner_department,
@@ -186,7 +184,7 @@ def search_policies(request: PolicyQueryRequest) -> SearchResponse:
     )
     return SearchResponse(
         collection="policies",
-    results=[_policy_search_result(document, score) for document, score in results],
+        results=[_policy_search_result(document, score) for document, score in results],
     )
 
 
@@ -197,15 +195,16 @@ def search_employees(
 ) -> SearchResponse:
     include_sensitive = _can_view_sensitive_employee_data(x_api_key)
     results = _employee_vector_store.search_with_scores(
-        request.query, request.limit, filters=_employee_filters(request),
+        request.query,
+        request.limit,
+        filters=_employee_filters(request),
         include_sensitive=include_sensitive,
     )
     return SearchResponse(
         collection="employees",
-    results=[
-        _employee_search_result(document, score)
-        for document, score in results
-    ],
+        results=[
+            _employee_search_result(document, score) for document, score in results
+        ],
     )
 
 
@@ -213,7 +212,8 @@ def search_employees(
 def ask_policies(request: PolicyQueryRequest) -> AskResponse:
     try:
         result = _policy_workflow.ask(
-            request.query, request.limit,
+            request.query,
+            request.limit,
             filters={
                 "policy_type": request.policy_type,
                 "owner_department": request.owner_department,
@@ -330,7 +330,9 @@ def _employee_filters(request: EmployeeQueryRequest) -> dict:
 def _can_view_sensitive_employee_data(api_key: str | None) -> bool:
     """Keep compensation private unless a configured HR API key is supplied."""
     expected_key = os.getenv("HR_API_KEY")
-    return bool(expected_key and api_key and secrets.compare_digest(api_key, expected_key))
+    return bool(
+        expected_key and api_key and secrets.compare_digest(api_key, expected_key)
+    )
 
 
 def _ingest_employees(path: Path) -> int:

@@ -46,10 +46,15 @@ class PolicyRAGWorkflow:
         self.graph = self._build_graph()
 
     def ask(
-        self, question: str, limit: int = 5, filters: dict[str, str | None] | None = None
+        self,
+        question: str,
+        limit: int = 5,
+        filters: dict[str, str | None] | None = None,
     ) -> PolicyRAGState:
         """Run retrieval, evidence validation, and grounded answer generation."""
-        return self.graph.invoke({"question": question, "limit": limit, "filters": filters or {}})
+        return self.graph.invoke(
+            {"question": question, "limit": limit, "filters": filters or {}}
+        )
 
     def _build_graph(self):
         builder = StateGraph(PolicyRAGState)
@@ -90,7 +95,6 @@ class PolicyRAGWorkflow:
                     "score": float(score),
                 }
             )
-
         return {"evidence": evidence}
 
     def _validate_evidence(self, state: PolicyRAGState) -> PolicyRAGState:
@@ -116,13 +120,13 @@ class PolicyRAGWorkflow:
             [
                 (
                     "system",
-                    "You are an enterprise policy assistant. Answer only from the "
-                    "provided evidence. Do not add facts, advice, or sources that "
-                    "are not in it. If the evidence does not directly answer the "
-                    "question, say so. Do not assign a responsibility to a person, "
-                    "team, or department unless the evidence explicitly names that "
-                    "entity with that responsibility. Cite every factual statement "
-                    "using one or more evidence numbers such as [1] or [1][2].",
+                    """You are an enterprise policy assistant. Answer only from the 
+provided evidence. Do not add facts, advice, or sources that 
+are not in it. If the evidence does not directly answer the 
+question, say so. Do not assign a responsibility to a person, 
+team, or department unless the evidence explicitly names that 
+entity with that responsibility. Cite every factual statement 
+using one or more evidence numbers such as [1] or [1][2].""",
                 ),
                 (
                     "human",
@@ -133,9 +137,7 @@ class PolicyRAGWorkflow:
         )
         answer = str(response.content).strip()
         cited_ids = {int(value) for value in self._citation_pattern.findall(answer)}
-        citations = [
-            item for item in evidence if item["citation_id"] in cited_ids
-        ]
+        citations = [item for item in evidence if item["citation_id"] in cited_ids]
 
         # A response without citations cannot meet the product's answer + source
         # + section + evidence contract, even when retrieval itself succeeded.

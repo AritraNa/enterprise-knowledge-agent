@@ -41,7 +41,9 @@ class EmployeeVectorStore:
         )
         rows = [
             {"id": employee.id, "content": document.page_content, "embedding": vector}
-            for employee, document, vector in zip(employees, documents, vectors, strict=True)
+            for employee, document, vector in zip(
+                employees, documents, vectors, strict=True
+            )
         ]
         query = """
         UNWIND $rows AS row
@@ -53,12 +55,18 @@ class EmployeeVectorStore:
             session.run(query, rows=rows).consume()
 
     def search_with_scores(
-        self, query: str, limit: int = 5, filters: dict | None = None,
+        self,
+        query: str,
+        limit: int = 5,
+        filters: dict | None = None,
         include_sensitive: bool = False,
     ) -> list[tuple[Document, float]]:
         """Find employees using semantic relevance, keywords, and graph filters."""
         query_vector = self.embeddings.embed_query(query)
         filters = filters or {}
+        # Only an explicit API `skills` filter is exact. Natural-language skill
+        # phrases remain semantic so related skills can still be retrieved.
+        requested_skills = [skill.casefold() for skill in filters.get("skills", [])]
         candidate_limit = max(limit * 5, 25)
         vector_cypher = """
         MATCH (employee:Employee)
@@ -109,8 +117,9 @@ class EmployeeVectorStore:
             "location": filters.get("location"),
             "job_title": filters.get("job_title"),
             "min_experience_years": filters.get("min_experience_years"),
-            "skills": [skill.casefold() for skill in filters.get("skills", [])],
+            "skills": requested_skills,
         }
+        print(vector_cypher, keyword_cypher, parameters)
         with self.driver.session() as session:
             vector_records = session.run(vector_cypher, **parameters).data()
             keyword_records = session.run(keyword_cypher, **parameters).data()
@@ -120,16 +129,22 @@ class EmployeeVectorStore:
             for record in vector_records
             if record["content"]
         }
-        max_keyword_score = max((float(row["score"]) for row in keyword_records), default=1.0)
+        max_keyword_score = max(
+            (float(row["score"]) for row in keyword_records), default=1.0
+        )
         for record in keyword_records:
             if not record["content"]:
                 continue
-            candidate = merged.setdefault(record["employee_id"], {**record, "vector_score": 0.0})
+            candidate = merged.setdefault(
+                record["employee_id"], {**record, "vector_score": 0.0}
+            )
             candidate["keyword_score"] = float(record["score"]) / max_keyword_score
 
         results = []
         for record in merged.values():
-            score = 0.80 * max(record["vector_score"], 0.0) + 0.20 * record.get("keyword_score", 0.0)
+            score = 0.80 * max(record["vector_score"], 0.0) + 0.20 * record.get(
+                "keyword_score", 0.0
+            )
             document = self._to_document(record, include_sensitive)
             if self._matches_listed_skill(query, document):
                 score += 0.10
@@ -168,8 +183,23 @@ class EmployeeVectorStore:
 
     @staticmethod
     def _keyword_query(query: str) -> str:
-        stop_words = {"a", "an", "does", "has", "have", "in", "is", "the", "who", "with"}
-        terms = [term for term in re.findall(r"[A-Za-z0-9]+", query.casefold()) if term not in stop_words]
+        stop_words = {
+            "a",
+            "an",
+            "does",
+            "has",
+            "have",
+            "in",
+            "is",
+            "the",
+            "who",
+            "with",
+        }
+        terms = [
+            term
+            for term in re.findall(r"[A-Za-z0-9]+", query.casefold())
+            if term not in stop_words
+        ]
         return " OR ".join(terms) or query
 
     @staticmethod
@@ -185,7 +215,10 @@ class EmployeeVectorStore:
         }
         if include_sensitive:
             metadata["salary"] = record["salary"]
-        return Document(page_content=record["content"], metadata=metadata)
+        content = record["content"]
+        if include_sensitive and record["salary"]:
+            content = f"{content}\nSalary: {record['salary']}"
+        return Document(page_content=content, metadata=metadata)
 
 
 def employee_to_document(employee: Employee) -> Document:
