@@ -1,11 +1,12 @@
 import os
+import secrets
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -59,13 +60,21 @@ class PolicyQueryRequest(QueryRequest):
     effective_date: str | None = None
 
 
+class EmployeeQueryRequest(QueryRequest):
+    department: str | None = None
+    location: str | None = None
+    job_title: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    min_experience_years: float | None = Field(default=None, ge=0)
+
+
 class SearchResult(BaseModel):
     content: str
     score: float
     source_document: str
     section: str
     page: int | None = None
-    metadata: dict[str, str | int | None]
+    metadata: dict[str, str | int | float | list[str] | None]
 
 
 class SearchResponse(BaseModel):
@@ -182,13 +191,21 @@ def search_policies(request: PolicyQueryRequest) -> SearchResponse:
 
 
 @app.post("/v1/employees/search", response_model=SearchResponse)
-def search_employees(request: QueryRequest) -> SearchResponse:
+def search_employees(
+    request: EmployeeQueryRequest,
+    x_api_key: Annotated[str | None, Header()] = None,
+) -> SearchResponse:
+    include_sensitive = _can_view_sensitive_employee_data(x_api_key)
     results = _employee_vector_store.search_with_scores(
-        request.query, request.limit
+        request.query, request.limit, filters=_employee_filters(request),
+        include_sensitive=include_sensitive,
     )
     return SearchResponse(
         collection="employees",
-    results=[_employee_search_result(document, score) for document, score in results],
+    results=[
+        _employee_search_result(document, score)
+        for document, score in results
+    ],
     )
 
 
@@ -213,9 +230,14 @@ def ask_policies(request: PolicyQueryRequest) -> AskResponse:
 
 
 @app.post("/v1/employees/ask", response_model=AskResponse)
-def ask_employees(request: QueryRequest) -> AskResponse:
+def ask_employees(
+    request: EmployeeQueryRequest,
+    x_api_key: Annotated[str | None, Header()] = None,
+) -> AskResponse:
     try:
-        result = _employee_workflow.ask(request.query, request.limit)
+        filters = _employee_filters(request)
+        filters["include_sensitive"] = _can_view_sensitive_employee_data(x_api_key)
+        result = _employee_workflow.ask(request.query, request.limit, filters=filters)
     except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -293,6 +315,22 @@ def _infer_policy_type(filename: str) -> str:
         if keyword in name:
             return policy_type
     return "General"
+
+
+def _employee_filters(request: EmployeeQueryRequest) -> dict:
+    return {
+        "department": request.department,
+        "location": request.location,
+        "job_title": request.job_title,
+        "skills": request.skills,
+        "min_experience_years": request.min_experience_years,
+    }
+
+
+def _can_view_sensitive_employee_data(api_key: str | None) -> bool:
+    """Keep compensation private unless a configured HR API key is supplied."""
+    expected_key = os.getenv("HR_API_KEY")
+    return bool(expected_key and api_key and secrets.compare_digest(api_key, expected_key))
 
 
 def _ingest_employees(path: Path) -> int:

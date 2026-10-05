@@ -60,7 +60,7 @@ class PolicyVectorStore:
             for chunk, vector in zip(chunks, vectors, strict=True)
         ]
         query = """
-        UNWIND rows AS row
+        UNWIND $rows AS row
         MATCH (document:PolicyDocument {id: row.document_id})
         MERGE (section:PolicySection {id: row.section_id})
         SET section.title = row.metadata.section, section.page = row.metadata.page

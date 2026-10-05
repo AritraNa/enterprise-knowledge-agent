@@ -24,4 +24,5 @@ UNIQUE_CONSTRAINTS = {
     "DataSource": "id",
     "SourceRecord": "id",
     "IngestionJob": "id",
+    "Skill": "normalized_name",
 }

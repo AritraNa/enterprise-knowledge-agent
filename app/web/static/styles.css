@@ -67,6 +67,23 @@ h1::selection { background: #ffd5ce; }
 h2 { margin: 0 0 8px; font-size: 1.25rem; }
 .lead { color: #d0c8da; line-height: 1.65; max-width: 650px; }
 
+.demo-guide {
+  margin: 30px 0 36px;
+  padding: 22px 24px 24px;
+  color: #272238;
+  background: #f7f4ff;
+  border: 1px solid #d8d0f5;
+  border-radius: 14px;
+  box-shadow: 0 14px 32px rgba(14, 9, 38, .18);
+}
+.demo-guide-heading { display: flex; align-items: center; gap: 12px; }
+.demo-guide h2 { margin: 0; font-size: 1.12rem; }
+.demo-badge { color: #4d3fa5; background: #e6e0ff; border-radius: 999px; padding: 4px 9px; font-size: .75rem; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; }
+.demo-guide p { margin: 12px 0 16px; color: #514b64; line-height: 1.55; max-width: 72ch; }
+.demo-guide ol { margin: 18px 0 0; padding-left: 21px; }
+.demo-guide li { padding-left: 5px; color: #3e3850; line-height: 1.55; }
+.demo-guide li + li { margin-top: 7px; }
+
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 38px; }
 .card {
   display: block;

@@ -21,7 +21,10 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
 
     def _retrieve_evidence(self, state: PolicyRAGState) -> PolicyRAGState:
         results = self.vector_store.search_with_scores(
-            state["question"], state.get("limit", 5)
+            state["question"],
+            state.get("limit", 5),
+            filters=state.get("filters"),
+            include_sensitive=bool(state.get("filters", {}).get("include_sensitive")),
         )
         evidence: list[Evidence] = []
 
@@ -73,4 +76,12 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
         citations = [
             item for item in evidence if item["citation_id"] in cited_ids
         ]
-        return {"answer": answer, "citations": citations or evidence}
+        if not citations:
+            return {
+                "answer": (
+                    "I found employee records, but could not produce a properly "
+                    "cited answer. Please refine the question."
+                ),
+                "citations": [],
+            }
+        return {"answer": answer, "citations": citations}

@@ -1,4 +1,5 @@
 import os
+import re
 
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
@@ -52,10 +53,14 @@ class EmployeeVectorStore:
             session.run(query, rows=rows).consume()
 
     def search_with_scores(
-        self, query: str, limit: int = 5
+        self, query: str, limit: int = 5, filters: dict | None = None,
+        include_sensitive: bool = False,
     ) -> list[tuple[Document, float]]:
+        """Find employees using semantic relevance, keywords, and graph filters."""
         query_vector = self.embeddings.embed_query(query)
-        cypher = """
+        filters = filters or {}
+        candidate_limit = max(limit * 5, 25)
+        vector_cypher = """
         MATCH (employee:Employee)
         SEARCH employee IN (
             VECTOR INDEX employee_embedding_index
@@ -63,47 +68,73 @@ class EmployeeVectorStore:
             LIMIT $limit
         ) SCORE AS score
         OPTIONAL MATCH (employee)-[:WORKS_FOR]->(department:Department)
-        RETURN employee.id AS employee_id,
-               employee.department_id AS department_id,
-               department.name AS department,
-               employee.location AS location,
-               employee.job_title AS job_title,
-               employee.salary AS salary,
-               employee.search_content AS content,
-               score
+        WITH employee, department, score
+        WHERE ($department IS NULL OR toLower(department.name) = toLower($department))
+          AND ($location IS NULL OR toLower(employee.location) = toLower($location))
+          AND ($job_title IS NULL OR toLower(employee.job_title) = toLower($job_title))
+          AND ($min_experience_years IS NULL OR coalesce(employee.experience_years, 0) >= $min_experience_years)
+          AND (size($skills) = 0 OR ALL(skill_name IN $skills WHERE EXISTS {
+              MATCH (employee)-[:HAS_SKILL]->(:Skill {normalized_name: skill_name})
+          } OR skill_name IN [listed_skill IN coalesce(employee.skills, []) | toLower(listed_skill)]))
+        RETURN employee.id AS employee_id, employee.department_id AS department_id,
+               department.name AS department, employee.location AS location,
+               employee.job_title AS job_title, employee.salary AS salary,
+               employee.skills AS skills, employee.experience_years AS experience_years,
+               employee.search_content AS content, score
         """
+        keyword_cypher = """
+        CALL db.index.fulltext.queryNodes('employee_directory_fulltext', $search_text)
+        YIELD node AS employee, score
+        OPTIONAL MATCH (employee)-[:WORKS_FOR]->(department:Department)
+        WITH employee, department, score
+        WHERE ($department IS NULL OR toLower(department.name) = toLower($department))
+          AND ($location IS NULL OR toLower(employee.location) = toLower($location))
+          AND ($job_title IS NULL OR toLower(employee.job_title) = toLower($job_title))
+          AND ($min_experience_years IS NULL OR coalesce(employee.experience_years, 0) >= $min_experience_years)
+          AND (size($skills) = 0 OR ALL(skill_name IN $skills WHERE EXISTS {
+              MATCH (employee)-[:HAS_SKILL]->(:Skill {normalized_name: skill_name})
+          } OR skill_name IN [listed_skill IN coalesce(employee.skills, []) | toLower(listed_skill)]))
+        RETURN employee.id AS employee_id, employee.department_id AS department_id,
+               department.name AS department, employee.location AS location,
+               employee.job_title AS job_title, employee.salary AS salary,
+               employee.skills AS skills, employee.experience_years AS experience_years,
+               employee.search_content AS content, score
+        LIMIT $limit
+        """
+        parameters = {
+            "embedding": query_vector,
+            "limit": candidate_limit,
+            "search_text": self._keyword_query(query),
+            "department": filters.get("department"),
+            "location": filters.get("location"),
+            "job_title": filters.get("job_title"),
+            "min_experience_years": filters.get("min_experience_years"),
+            "skills": [skill.casefold() for skill in filters.get("skills", [])],
+        }
         with self.driver.session() as session:
-            records = session.run(
-                cypher,
-                limit=max(limit, 50),
-                embedding=query_vector,
-            ).data()
+            vector_records = session.run(vector_cypher, **parameters).data()
+            keyword_records = session.run(keyword_cypher, **parameters).data()
 
-        results = [
-            (
-                Document(
-                    page_content=record["content"],
-                    metadata={
-                        "employee_id": record["employee_id"],
-                        "department_id": record["department_id"],
-                        "department": record["department"],
-                        "location": record["location"],
-                        "job_title": record["job_title"],
-                        "salary": record["salary"],
-                    },
-                ),
-                float(record["score"]),
-            )
-            for record in records
+        merged = {
+            record["employee_id"]: {**record, "vector_score": float(record["score"])}
+            for record in vector_records
             if record["content"]
-        ]
-        exact_skill_matches = [
-            result for result in results if self._matches_listed_skill(query, result[0])
-        ]
-        semantic_matches = [
-            result for result in results if result not in exact_skill_matches
-        ]
-        return (exact_skill_matches + semantic_matches)[:limit]
+        }
+        max_keyword_score = max((float(row["score"]) for row in keyword_records), default=1.0)
+        for record in keyword_records:
+            if not record["content"]:
+                continue
+            candidate = merged.setdefault(record["employee_id"], {**record, "vector_score": 0.0})
+            candidate["keyword_score"] = float(record["score"]) / max_keyword_score
+
+        results = []
+        for record in merged.values():
+            score = 0.80 * max(record["vector_score"], 0.0) + 0.20 * record.get("keyword_score", 0.0)
+            document = self._to_document(record, include_sensitive)
+            if self._matches_listed_skill(query, document):
+                score += 0.10
+            results.append((document, min(score, 1.0)))
+        return sorted(results, key=lambda result: result[1], reverse=True)[:limit]
 
     def _ensure_vector_index(self) -> None:
         query = f"""
@@ -116,6 +147,12 @@ class EmployeeVectorStore:
         """
         with self.driver.session() as session:
             session.run(query).consume()
+            session.run(
+                "CREATE FULLTEXT INDEX employee_directory_fulltext IF NOT EXISTS "
+                "FOR (employee:Employee) ON EACH "
+                "[employee.name, employee.employee_id, employee.job_title, "
+                "employee.location, employee.search_content]"
+            ).consume()
 
     @staticmethod
     def _matches_listed_skill(query: str, document: Document) -> bool:
@@ -128,6 +165,27 @@ class EmployeeVectorStore:
                 )
                 return any(skill and skill in query_text for skill in skills)
         return False
+
+    @staticmethod
+    def _keyword_query(query: str) -> str:
+        stop_words = {"a", "an", "does", "has", "have", "in", "is", "the", "who", "with"}
+        terms = [term for term in re.findall(r"[A-Za-z0-9]+", query.casefold()) if term not in stop_words]
+        return " OR ".join(terms) or query
+
+    @staticmethod
+    def _to_document(record: dict, include_sensitive: bool) -> Document:
+        metadata = {
+            "employee_id": record["employee_id"],
+            "department_id": record["department_id"],
+            "department": record["department"],
+            "location": record["location"],
+            "job_title": record["job_title"],
+            "skills": record["skills"] or [],
+            "experience_years": record["experience_years"],
+        }
+        if include_sensitive:
+            metadata["salary"] = record["salary"]
+        return Document(page_content=record["content"], metadata=metadata)
 
 
 def employee_to_document(employee: Employee) -> Document:
@@ -144,9 +202,6 @@ def employee_to_document(employee: Employee) -> Document:
         lines.append(f"Skills: {', '.join(employee.skills)}")
     if employee.experience_summary:
         lines.append(f"Experience: {employee.experience_summary}")
-    if employee.salary:
-        lines.append(f"Salary: {employee.salary}")
-
     return Document(
         id=employee.id,
         page_content="\n".join(lines),
@@ -156,6 +211,7 @@ def employee_to_document(employee: Employee) -> Document:
             "department": employee.department_name,
             "location": employee.location,
             "job_title": employee.job_title,
-            "salary": employee.salary,
+            "skills": employee.skills,
+            "experience_years": employee.experience_years,
         },
     )

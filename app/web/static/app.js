@@ -2,6 +2,62 @@ const page = document.body.dataset.page;
 const collection = document.body.dataset.collection;
 const operation = document.body.dataset.operation;
 
+const demoGuides = {
+  home: {
+    title: "Demo overview",
+    summary: "Use this page to frame the demo: two knowledge collections use the same evidence-first pattern, from source file to verified response.",
+    steps: ["Choose Policies or Employees.", "Upload a source file to parse, normalize, and index it in Neo4j.", "Search to show the retrieved evidence, then ask to show the cited answer."],
+  },
+  "policies-upload": {
+    title: "Policy ingestion demo",
+    summary: "Start here to show how an unstructured policy becomes searchable company knowledge.",
+    steps: ["Select a policy PDF and submit it.", "The service extracts text, splits it into meaningful chunks, creates embeddings, and replaces that source in Neo4j.", "Use the indexed-chunk count as confirmation before moving to Search or Ask."],
+  },
+  "policies-search": {
+    title: "Policy retrieval demo",
+    summary: "Show retrieval separately from generation so the audience can inspect the evidence that will ground an answer.",
+    steps: ["Enter a natural-language policy question.", "The service embeds the query and finds the closest policy chunks, applying active-policy filters by default.", "Point out the source and page on each result, then open Ask to demonstrate the grounded answer."],
+  },
+  "policies-ask": {
+    title: "Grounded policy answer demo",
+    summary: "This is the final RAG step: the assistant answers from retrieved policy evidence and returns the sources used.",
+    steps: ["Ask a question in everyday language.", "The workflow retrieves the best policy chunks before the model drafts an answer.", "Use the numbered sources to explain that the response is traceable to the uploaded policy."],
+  },
+  "employees-upload": {
+    title: "Employee ingestion demo",
+    summary: "Use this step to show how a structured employee spreadsheet becomes both a connected directory and a searchable knowledge source.",
+    steps: ["Select the employee spreadsheet and submit it.", "The importer validates rows, writes employee and department relationships, and stores embeddings in Neo4j.", "Use the indexed-record count to confirm the directory is ready."],
+  },
+  "employees-search": {
+    title: "Employee retrieval demo",
+    summary: "Demonstrate that a natural-language query can surface the most relevant employee records without requiring exact field matches.",
+    steps: ["Search for a team, department, skill, or role.", "The service embeds the request and ranks the closest employee records from the indexed directory.", "Review the returned evidence before asking a broader question."],
+  },
+  "employees-ask": {
+    title: "Grounded employee answer demo",
+    summary: "Finish the employee flow by showing an answer that is based on matching employee records and accompanied by citations.",
+    steps: ["Ask a people question such as who works in a department.", "The workflow retrieves matching employee records, then uses only that context to prepare the response.", "Call out the citations as the audit trail back to the directory."],
+  },
+};
+
+function guideKey() {
+  return page === "home" ? "home" : `${collection}-${operation}`;
+}
+
+function addDemoGuide() {
+  const guide = demoGuides[guideKey()];
+  if (!guide) return;
+  const section = document.createElement("aside");
+  section.className = "demo-guide";
+  section.setAttribute("aria-labelledby", "demo-guide-title");
+  section.innerHTML = `<div class="demo-guide-heading"><span class="demo-badge">Demo guide</span><h2 id="demo-guide-title">${guide.title}</h2></div><p>${guide.summary}</p><ol>${guide.steps.map((step) => `<li>${step}</li>`).join("")}</ol>`;
+  const pageElement = document.querySelector("main.page");
+  const lead = pageElement.querySelector(".lead");
+  lead.after(section);
+}
+
+addDemoGuide();
+
 function showResult(content, type = "success") {
   const result = document.querySelector("#result");
   result.className = `result ${type}`;

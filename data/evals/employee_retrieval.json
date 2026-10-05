@@ -1,0 +1,12 @@
+[
+  {
+    "question": "Who has Python experience?",
+    "filters": {"skills": ["Python"]},
+    "expected_employee_ids": ["emp_E002"]
+  },
+  {
+    "question": "Which IT employees are in Puri?",
+    "filters": {"department": "IT", "location": "Puri"},
+    "expected_employee_ids": ["emp_E002"]
+  }
+]

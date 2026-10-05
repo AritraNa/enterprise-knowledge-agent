@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from .graph.neo4j_client import Neo4jStore
 from .graph.repository import EmployeeRepository, IngestionJobRepository
 from .ingestion.employee_importer import EmployeeImporter
+from .ingestion.employee_graph_migration import backfill_employee_graph
 from .ingestion.policy_pdf_importer import PolicyPDFImporter
 from .retrieval.employee_vector_store import EmployeeVectorStore
 from .retrieval.policy_vector_store import PolicyVectorStore
@@ -45,6 +46,16 @@ def search(query: str, limit: int) -> None:
         employee_id = document.metadata["employee_id"]
         print(f"\n{position}. {employee_id} (similarity: {score:.4f})")
         print(document.page_content)
+
+
+def migrate_employee_graph() -> None:
+    """Upgrade existing employee records with relationship and filter metadata."""
+    store = EmployeeVectorStore()
+    try:
+        count = backfill_employee_graph(store)
+        print(f"Upgraded {count} employee records with skills and reporting relationships.")
+    finally:
+        store.driver.close()
 
 
 def ingest_policy(source_file: str) -> None:
@@ -117,6 +128,10 @@ def main() -> None:
         help="Maximum number of employees to return",
     )
 
+    employee_migration_command = commands.add_parser(
+        "migrate-employee-graph", help="Backfill skills, experience, and reporting links"
+    )
+
     policy_ingest_command = commands.add_parser(
         "ingest-policy", help="Extract and index a policy PDF into Neo4j"
     )
@@ -153,6 +168,8 @@ def main() -> None:
         ingest(args.source)
     elif args.command == "search":
         search(args.query, args.limit)
+    elif args.command == "migrate-employee-graph":
+        migrate_employee_graph()
     elif args.command == "ingest-policy":
         ingest_policy(args.source_file)
     elif args.command == "search-policy":

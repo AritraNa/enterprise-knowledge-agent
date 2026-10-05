@@ -206,10 +206,18 @@ The same server provides a minimal browser interface at
 
 - `POST /v1/employees/upload` accepts one `.xlsx` file as multipart form data
   under the `file` field, imports it into Neo4j, and refreshes employee vectors.
-- `POST /v1/employees/search` accepts `{ "query": "...", "limit": 5 }` and
-  returns matching employee records.
-- `POST /v1/employees/ask` accepts the same JSON body and returns a grounded
-  LangGraph answer with employee-record citations.
+- `POST /v1/employees/search` and `POST /v1/employees/ask` accept optional
+  `department`, `location`, `job_title`, `skills`, and `min_experience_years`
+  filters in addition to `query` and `limit`.
+- Salary is intentionally excluded from ordinary retrieval and answers. Set
+  `HR_API_KEY` and provide its value in `X-API-Key` only for authorized HR
+  search responses that need salary metadata.
+
+To upgrade employees already indexed before these fields were added:
+
+```bash
+uv run python -m app.main migrate-employee-graph
+```
 
 For example, upload a policy:
 

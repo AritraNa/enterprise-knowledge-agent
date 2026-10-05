@@ -28,6 +28,7 @@ class EmployeeRepository:
             e.manager_id = $manager_id,
             e.skills = $skills,
             e.experience_summary = $experience_summary,
+            e.experience_years = $experience_years,
             e.salary = $salary
 
         MERGE (d:Department {id: $department_id})
@@ -61,6 +62,7 @@ class EmployeeRepository:
                 manager_id=employee.manager_id,
                 skills=employee.skills,
                 experience_summary=employee.experience_summary,
+                experience_years=employee.experience_years,
                 source_id=source_record.id,
                 source_file=source_record.source_file,
                 sheet_name=source_record.sheet_name,
@@ -69,7 +71,42 @@ class EmployeeRepository:
                 job_id=job.id,
             )
 
-            return result.single()
+            employee_node = result.single()
+            session.run(
+                "MATCH (e:Employee {id: $employee_id})-[relationship:HAS_SKILL]->() "
+                "DELETE relationship",
+                employee_id=employee.id,
+            ).consume()
+            if employee.skills:
+                session.run(
+                    """
+                    MATCH (e:Employee {id: $employee_id})
+                    UNWIND $skills AS skill_name
+                    MERGE (skill:Skill {normalized_name: toLower(skill_name)})
+                    SET skill.name = skill_name
+                    MERGE (e)-[:HAS_SKILL]->(skill)
+                    """,
+                    employee_id=employee.id,
+                    skills=employee.skills,
+                ).consume()
+            return employee_node
+
+    def rebuild_reporting_lines(self) -> None:
+        """Link only managers that exist in the freshly imported directory."""
+        query = """
+        OPTIONAL MATCH (:Employee)-[relationship:REPORTS_TO]->(:Employee)
+        DELETE relationship
+        WITH 1 AS ignored
+        MATCH (employee:Employee)
+        WHERE employee.manager_id IS NOT NULL
+        MATCH (manager:Employee {
+            id: CASE WHEN employee.manager_id STARTS WITH 'emp_' THEN employee.manager_id
+                     ELSE 'emp_' + employee.manager_id END
+        })
+        MERGE (employee)-[:REPORTS_TO]->(manager)
+        """
+        with self.driver.session() as session:
+            session.run(query).consume()
 
 
 class IngestionJobRepository:
@@ -80,6 +117,7 @@ class IngestionJobRepository:
         query = """
         MERGE (j:IngestionJob {id: $id})
         SET j.source_file = $source_file,
+            j.source_hash = $source_hash,
             j.status = $status,
             j.started_at = $started_at,
             j.completed_at = $completed_at
@@ -89,8 +127,9 @@ class IngestionJobRepository:
         with self.driver.session() as session:
             result = session.run(
                 query,
-                id=job.id,
-                source_file=job.source_file,
+            id=job.id,
+            source_file=job.source_file,
+            source_hash=job.source_hash,
                 status=job.status,
                 started_at=job.started_at.isoformat(),
                 completed_at=(
@@ -99,3 +138,17 @@ class IngestionJobRepository:
             )
 
             return result.single()
+
+    def complete(self, job: IngestionJob):
+        query = """
+        MATCH (j:IngestionJob {id: $id})
+        SET j.status = $status, j.completed_at = $completed_at
+        RETURN j
+        """
+        with self.driver.session() as session:
+            return session.run(
+                query,
+                id=job.id,
+                status=job.status,
+                completed_at=job.completed_at.isoformat() if job.completed_at else None,
+            ).single()

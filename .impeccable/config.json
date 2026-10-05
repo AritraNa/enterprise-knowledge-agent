@@ -27,6 +27,15 @@
         ],
         "createdAt": "2026-10-05T04:17:56.170Z",
         "reason": "False positive: styles.css defines h1 at min 2rem and h2 at 1.25rem (1.6x hierarchy)."
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "app/web/static/index.html"
+        ],
+        "createdAt": "2026-10-05T08:08:55.615Z",
+        "reason": "Checker could not resolve the mounted /ui/styles.css path; the incumbent stylesheet defines h1 at clamp(2rem, 4vw, 3.1rem) and h2 at 1.25rem."
       }
     ]
   }
