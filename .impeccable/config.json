@@ -36,6 +36,24 @@
         ],
         "createdAt": "2026-10-05T08:08:55.615Z",
         "reason": "Checker could not resolve the mounted /ui/styles.css path; the incumbent stylesheet defines h1 at clamp(2rem, 4vw, 3.1rem) and h2 at 1.25rem."
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "app/web/static/employees-search.html"
+        ],
+        "createdAt": "2026-10-05T18:18:27.911Z",
+        "reason": "False positive: the mounted stylesheet defines h1 at clamp(2rem, 4vw, 3.1rem) and h2 at 1.25rem; the detector could not resolve /ui/styles.css."
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "app/web/static/employees-ask.html"
+        ],
+        "createdAt": "2026-10-05T18:18:27.930Z",
+        "reason": "False positive: the mounted stylesheet defines h1 at clamp(2rem, 4vw, 3.1rem) and h2 at 1.25rem; the detector could not resolve /ui/styles.css."
       }
     ]
   }
