@@ -172,7 +172,7 @@ function addActivityMessage(form) {
 
 function enhanceFileInput(form) {
   const input = form.querySelector("input[type=file]");
-  if (!input) return;
+  if (!input) return () => {};
   const status = document.createElement("p");
   status.className = "file-status";
   status.textContent = "Choose a file to begin.";
@@ -181,6 +181,10 @@ function enhanceFileInput(form) {
     const file = input.files[0];
     status.textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB ready to index` : "Choose a file to begin.";
   });
+  return () => {
+    input.value = "";
+    status.textContent = "Choose a file to begin.";
+  };
 }
 
 function addQuerySuggestions(form) {
@@ -210,7 +214,7 @@ if (page === "operation") {
   const form = document.querySelector("#operation-form");
   const button = form.querySelector("button");
   const activity = addActivityMessage(form);
-  enhanceFileInput(form);
+  const clearFileInput = enhanceFileInput(form);
   addQuerySuggestions(form);
   form.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -233,9 +237,12 @@ if (page === "operation") {
         const query = form.querySelector("textarea").value.trim();
         const limit = Number(form.querySelector("input[type=number]").value);
         if (!query) throw new Error("Enter a question or search query.");
+        const hrApiKey = form.querySelector("#hr-api-key")?.value.trim();
+        const headers = { "Content-Type": "application/json" };
+        if (hrApiKey) headers["X-API-Key"] = hrApiKey;
         response = await fetch(`/v1/${collection}/${operation}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ query, limit }),
         });
       }
@@ -243,6 +250,7 @@ if (page === "operation") {
       if (!response.ok) throw new Error(apiError(data));
       if (operation === "upload") {
         showResult(`Indexed ${data.records_indexed} ${collection === "policies" ? "policy chunks" : "employee records"} from ${data.filename}.`);
+        if (response.status === 201) clearFileInput();
       } else if (operation === "search") {
         showResult(renderSearch(data), "evidence");
       } else {
