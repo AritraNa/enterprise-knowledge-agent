@@ -28,6 +28,18 @@ def parse_experience_years(value: str | None) -> float | None:
     return float(match.group()) if match else None
 
 
+def parse_salary_lpa(value: str | None) -> float | None:
+    """Extract a numeric LPA value from spreadsheet values such as `7.5 LPA`."""
+    if not value:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", value.replace(",", ""))
+    if not match:
+        return None
+    amount = float(match.group())
+    # Bare large values from payroll sheets are annual INR; normalize to LPA.
+    return amount / 100_000 if "lpa" not in value.casefold() and amount >= 1_000 else amount
+
+
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # Normalize column names
     df.columns = [re.sub(r"\s+", " ", str(column)).strip() for column in df.columns]

@@ -1,6 +1,10 @@
 """Backfill enriched employee graph fields for directories indexed before v2."""
 
-from app.ingestion.normalizer import normalize_skills, parse_experience_years
+from app.ingestion.normalizer import (
+    normalize_skills,
+    parse_experience_years,
+    parse_salary_lpa,
+)
 from app.models.employee import Employee
 from app.retrieval.employee_vector_store import EmployeeVectorStore
 
@@ -35,6 +39,7 @@ def backfill_employee_graph(store: EmployeeVectorStore) -> int:
             experience_summary=row["experience_summary"],
             experience_years=parse_experience_years(row["experience_summary"]),
             salary=row["salary"],
+            salary_lpa=parse_salary_lpa(row["salary"]),
         )
         for row in records
     ]
@@ -46,13 +51,15 @@ def backfill_employee_graph(store: EmployeeVectorStore) -> int:
             "id": employee.id,
             "skills": employee.skills,
             "experience_years": employee.experience_years,
+            "salary_lpa": employee.salary_lpa,
         }
         for employee in employees
     ]
     with store.driver.session() as session:
         session.run(
             "UNWIND $rows AS row MATCH (employee:Employee {id: row.id}) "
-            "SET employee.skills = row.skills, employee.experience_years = row.experience_years",
+            "SET employee.skills = row.skills, employee.experience_years = row.experience_years, "
+            "employee.salary_lpa = row.salary_lpa",
             rows=rows,
         ).consume()
         session.run(

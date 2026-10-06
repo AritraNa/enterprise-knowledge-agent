@@ -20,6 +20,87 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
             **kwargs,
         )
 
+    def ask(
+        self, question: str, limit: int = 5, filters: dict[str, str | None] | None = None
+    ) -> PolicyRAGState:
+        """Route structured employee analytics to Neo4j, otherwise run RAG."""
+        filters = filters or {}
+        intent = self._analytics_intent(question)
+        if intent:
+            if not filters.get("include_sensitive"):
+                return self._respond_insufficient({"sensitive_access_denied": True})
+            return self._run_salary_analytics(intent)
+        return super().ask(question, limit, filters)
+
+    @staticmethod
+    def _analytics_intent(question: str) -> dict[str, float | str] | None:
+        """Recognize numeric salary analytics that embeddings should not answer."""
+        if not re.search(r"\b(average|mean)\b", question, re.I) or not re.search(
+            r"\b(salary|compensation|pay|ctc|lpa|wage)\b", question, re.I
+        ):
+            return None
+        patterns = (
+            (r"\b(?:more than|over|greater than)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", ">"),
+            (r"\b(?:at least|minimum of)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", ">="),
+            (r"\b(?:less than|under)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", "<"),
+            (r"\b(?:at most|maximum of)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", "<="),
+        )
+        for pattern, operator in patterns:
+            if match := re.search(pattern, question, re.I):
+                return {"operator": operator, "experience_years": float(match.group(1))}
+        return None
+
+    def _run_salary_analytics(self, intent: dict[str, float | str]) -> PolicyRAGState:
+        operator = str(intent["operator"])
+        years = float(intent["experience_years"])
+        query = f"""
+        MATCH (employee:Employee)
+        WHERE employee.experience_years {operator} $experience_years
+          AND employee.salary_lpa IS NOT NULL
+        RETURN employee.id AS employee_id, employee.name AS name,
+               employee.experience_years AS experience_years,
+               employee.salary_lpa AS salary_lpa
+        ORDER BY employee.name
+        """
+        with self.vector_store.driver.session() as session:
+            rows = session.run(query, experience_years=years).data()
+
+        evidence: list[Evidence] = []
+        for citation_id, row in enumerate(rows, start=1):
+            evidence.append(
+                {
+                    "citation_id": citation_id,
+                    "source_document": "Employee directory",
+                    "section": f"Employee record: {row['name']} ({row['employee_id']})",
+                    "page": 0,
+                    "content": (
+                        f"Employee: {row['name']}\n"
+                        f"Experience years: {row['experience_years']}\n"
+                        f"Salary: {row['salary_lpa']} LPA"
+                    ),
+                    "score": 1.0,
+                }
+            )
+        if not evidence:
+            return {
+                "answer": "No employee records have both a salary and the requested experience range.",
+                "citations": [],
+            }
+
+        average = sum(float(row["salary_lpa"]) for row in rows) / len(rows)
+        comparison = f"{operator} {years:g} years"
+        source_list = ", ".join(
+            f"{row['name']} ({row['salary_lpa']:g} LPA) [{index}]"
+            for index, row in enumerate(rows, start=1)
+        )
+        return {
+            "answer": (
+                f"The average salary for employees with experience {comparison} is "
+                f"{average:.2f} LPA, based on {len(rows)} employees: {source_list}."
+            ),
+            "citations": evidence,
+        }
+
     def _retrieve_evidence(self, state: PolicyRAGState) -> PolicyRAGState:
         if self._requests_sensitive_data(state["question"]) and not state.get(
             "filters", {}
@@ -36,7 +117,6 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
 
         for citation_id, (document, score) in enumerate(results, start=1):
             evidence.append(self._employee_evidence(document, score, citation_id))
-        print({"_retrieve_evidence": evidence})
         return {"evidence": evidence}
 
     @staticmethod
@@ -79,15 +159,15 @@ class EmployeeRAGWorkflow(PolicyRAGWorkflow):
             [
                 (
                     "system",
-                    "You are an enterprise employee-directory assistant. Answer only "
-                    "from the provided employee records. Do not add facts, skills, "
-                    "roles, reporting relationships, or contact details that are not "
-                    "in the records. If the records do not directly answer the "
-                    "question, say so. Cite every factual statement using evidence "
-                    "numbers such as [1] or [1][2]. For an authorized compensation "
-                    "question, list the salary from every matching employee record; "
-                    "do not summarize, omit a matching record, or claim a count "
-                    "unless the evidence establishes it.",
+                    "You are an enterprise employee-directory assistant. "
+                    "Answer only from the provided employee records. Do not add or infer facts, skills, roles, reporting relationships, compensation, or contact details that are not supported by the records. "
+                    "You may perform calculations and aggregations using values explicitly present in the provided records when the user's question requires them. This includes average, sum, total, minimum, maximum, count, difference, percentage, grouping, and comparison. "
+                    "When performing a calculation, use only values explicitly present in the provided employee records and include every record matching the user's requested criteria. Do not silently exclude matching records or estimate, infer, or substitute missing values. "
+                    "If required values are missing, clearly state that the calculation cannot be completed accurately from the available evidence. "
+                    "Show the relevant values used in the calculation when useful for verification. Clearly distinguish calculated results from values directly stated in the records. "
+                    "Cite every factual statement using evidence numbers such as [1] or [1][2]. For calculated values, cite the evidence containing all underlying values used in the calculation. "
+                    "If the records do not contain enough information to answer the question or perform the requested calculation reliably, say so. "
+                    "For an authorized compensation question, include every matching employee record relevant to the requested calculation or result. Do not omit a matching record or claim a count unless the evidence establishes it.",
                 ),
                 (
                     "human",

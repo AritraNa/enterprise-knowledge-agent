@@ -67,6 +67,14 @@ class EmployeeVectorStore:
         # Only an explicit API `skills` filter is exact. Natural-language skill
         # phrases remain semantic so related skills can still be retrieved.
         requested_skills = [skill.casefold() for skill in filters.get("skills", [])]
+        experience_operator, experience_years = self._experience_constraint(
+            query, filters
+        )
+        experience_predicate = (
+            f"employee.experience_years {experience_operator} $experience_years"
+            if experience_operator
+            else "$experience_years IS NULL"
+        )
         candidate_limit = max(limit * 5, 25)
         vector_cypher = """
         MATCH (employee:Employee)
@@ -80,14 +88,15 @@ class EmployeeVectorStore:
         WHERE ($department IS NULL OR toLower(department.name) = toLower($department))
           AND ($location IS NULL OR toLower(employee.location) = toLower($location))
           AND ($job_title IS NULL OR toLower(employee.job_title) = toLower($job_title))
-          AND ($min_experience_years IS NULL OR coalesce(employee.experience_years, 0) >= $min_experience_years)
+          AND ({experience_predicate})
           AND (size($skills) = 0 OR ALL(skill_name IN $skills WHERE EXISTS {
               MATCH (employee)-[:HAS_SKILL]->(:Skill {normalized_name: skill_name})
           } OR skill_name IN [listed_skill IN coalesce(employee.skills, []) | toLower(listed_skill)]))
         RETURN employee.id AS employee_id, employee.department_id AS department_id,
                department.name AS department, employee.location AS location,
                employee.job_title AS job_title, employee.salary AS salary,
-               employee.skills AS skills, employee.experience_years AS experience_years,
+               employee.salary_lpa AS salary_lpa, employee.skills AS skills,
+               employee.experience_years AS experience_years,
                employee.search_content AS content, score
         """
         keyword_cypher = """
@@ -98,17 +107,24 @@ class EmployeeVectorStore:
         WHERE ($department IS NULL OR toLower(department.name) = toLower($department))
           AND ($location IS NULL OR toLower(employee.location) = toLower($location))
           AND ($job_title IS NULL OR toLower(employee.job_title) = toLower($job_title))
-          AND ($min_experience_years IS NULL OR coalesce(employee.experience_years, 0) >= $min_experience_years)
+          AND ({experience_predicate})
           AND (size($skills) = 0 OR ALL(skill_name IN $skills WHERE EXISTS {
               MATCH (employee)-[:HAS_SKILL]->(:Skill {normalized_name: skill_name})
           } OR skill_name IN [listed_skill IN coalesce(employee.skills, []) | toLower(listed_skill)]))
         RETURN employee.id AS employee_id, employee.department_id AS department_id,
                department.name AS department, employee.location AS location,
                employee.job_title AS job_title, employee.salary AS salary,
-               employee.skills AS skills, employee.experience_years AS experience_years,
+               employee.salary_lpa AS salary_lpa, employee.skills AS skills,
+               employee.experience_years AS experience_years,
                employee.search_content AS content, score
         LIMIT $limit
         """
+        vector_cypher = vector_cypher.replace(
+            "{experience_predicate}", experience_predicate
+        )
+        keyword_cypher = keyword_cypher.replace(
+            "{experience_predicate}", experience_predicate
+        )
         parameters = {
             "embedding": query_vector,
             "limit": candidate_limit,
@@ -116,10 +132,9 @@ class EmployeeVectorStore:
             "department": filters.get("department"),
             "location": filters.get("location"),
             "job_title": filters.get("job_title"),
-            "min_experience_years": filters.get("min_experience_years"),
+            "experience_years": experience_years,
             "skills": requested_skills,
         }
-        print(vector_cypher, keyword_cypher, parameters)
         with self.driver.session() as session:
             vector_records = session.run(vector_cypher, **parameters).data()
             keyword_records = session.run(keyword_cypher, **parameters).data()
@@ -203,6 +218,27 @@ class EmployeeVectorStore:
         return " OR ".join(terms) or query
 
     @staticmethod
+    def _experience_constraint(
+        query: str, filters: dict
+    ) -> tuple[str | None, float | None]:
+        """Translate common comparative experience phrases into exact filters."""
+        if filters.get("min_experience_years") is not None:
+            return ">=", float(filters["min_experience_years"])
+        patterns = (
+            (
+                r"\b(?:more than|over|greater than)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)",
+                ">",
+            ),
+            (r"\b(?:at least|minimum of)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", ">="),
+            (r"\b(?:less than|under)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", "<"),
+            (r"\b(?:at most|maximum of)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", "<="),
+        )
+        for pattern, operator in patterns:
+            if match := re.search(pattern, query, re.I):
+                return operator, float(match.group(1))
+        return None, None
+
+    @staticmethod
     def _to_document(record: dict, include_sensitive: bool) -> Document:
         metadata = {
             "employee_id": record["employee_id"],
@@ -215,8 +251,11 @@ class EmployeeVectorStore:
         }
         if include_sensitive:
             metadata["salary"] = record["salary"]
+            metadata["salary_lpa"] = record["salary_lpa"]
         content = record["content"]
-        if include_sensitive and record["salary"]:
+        if include_sensitive and record["salary_lpa"] is not None:
+            content = f"{content}\nSalary: {record['salary_lpa']:g} LPA"
+        elif include_sensitive and record["salary"]:
             content = f"{content}\nSalary: {record['salary']}"
         return Document(page_content=content, metadata=metadata)
 

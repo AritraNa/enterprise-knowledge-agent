@@ -17,3 +17,4 @@ class Employee(BaseModel):
     experience_summary: str | None = None
     experience_years: float | None = Field(default=None, ge=0)
     salary: str | None = None
+    salary_lpa: float | None = Field(default=None, ge=0)

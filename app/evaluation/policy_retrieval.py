@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 from app.retrieval.policy_vector_store import PolicyVectorStore
 
-
 DATASET_PATH = Path("data/evals/policy_retrieval.json")
 
 
@@ -30,7 +29,9 @@ def evaluate(dataset_path: Path = DATASET_PATH, limit: int = 3) -> bool:
                     "status": "active",
                 },
             )
-            evidence = " ".join(document.page_content.casefold() for document, _ in results)
+            evidence = " ".join(
+                document.page_content.casefold() for document, _ in results
+            )
             terms = [term.casefold() for term in case["expected_evidence_terms"]]
             has_expected_terms = all(term in evidence for term in terms)
             case_passed = bool(results) and has_expected_terms
@@ -44,7 +45,7 @@ def evaluate(dataset_path: Path = DATASET_PATH, limit: int = 3) -> bool:
                     f"({score:.3f})"
                 )
             else:
-                print("  no matching policy evidence")
+                print("no matching policy evidence")
     finally:
         store.driver.close()
 

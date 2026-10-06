@@ -2,7 +2,12 @@ import pandas as pd
 
 from app.models.employee import Employee
 from app.models.source_record import SourceRecord
-from .normalizer import normalize_dataframe, normalize_skills, parse_experience_years
+from .normalizer import (
+    normalize_dataframe,
+    normalize_skills,
+    parse_experience_years,
+    parse_salary_lpa,
+)
 
 REQUIRED_COLUMNS = {
     "employee_id",
@@ -48,6 +53,7 @@ def parse_employees(path: str) -> list[tuple[Employee, SourceRecord]]:
             experience_summary=optional_text(row.get("experience_summary")),
             experience_years=parse_experience_years(optional_text(row.get("experience_summary"))),
             salary=optional_text(row.get("salary")),
+            salary_lpa=parse_salary_lpa(optional_text(row.get("salary"))),
         )
 
         source_record = SourceRecord(

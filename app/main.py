@@ -45,7 +45,6 @@ def search(query: str, limit: int) -> None:
     for position, (document, score) in enumerate(results, start=1):
         employee_id = document.metadata["employee_id"]
         print(f"\n{position}. {employee_id} (similarity: {score:.4f})")
-        print(document.page_content)
 
 
 def migrate_employee_graph() -> None:
@@ -53,7 +52,9 @@ def migrate_employee_graph() -> None:
     store = EmployeeVectorStore()
     try:
         count = backfill_employee_graph(store)
-        print(f"Upgraded {count} employee records with skills and reporting relationships.")
+        print(
+            f"Upgraded {count} employee records with skills and reporting relationships."
+        )
     finally:
         store.driver.close()
 
@@ -91,8 +92,6 @@ def search_policy(query: str, limit: int) -> None:
 def ask_policy(question: str, limit: int) -> None:
     """Run the LangGraph grounded-answer workflow for a policy question."""
     result = PolicyRAGWorkflow().ask(question, limit)
-    print("Answer:")
-    print(result["answer"])
 
     citations = result["citations"]
     if citations:
@@ -129,7 +128,8 @@ def main() -> None:
     )
 
     employee_migration_command = commands.add_parser(
-        "migrate-employee-graph", help="Backfill skills, experience, and reporting links"
+        "migrate-employee-graph",
+        help="Backfill skills, experience, and reporting links",
     )
 
     policy_ingest_command = commands.add_parser(
