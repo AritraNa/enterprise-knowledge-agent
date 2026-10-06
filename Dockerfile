@@ -1,7 +1,5 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/astral-sh/uv:0.10.9 AS uv
-
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=uv /uv /uvx /usr/local/bin/
+RUN pip install --no-cache-dir "uv==0.10.9"
 
 # Install dependencies before application code so dependency layers can be reused.
 COPY pyproject.toml uv.lock README.md ./

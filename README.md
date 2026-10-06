@@ -186,30 +186,26 @@ question set; higher values are stricter.
 
 ### Docker
 
-The local Docker stack runs the API, Neo4j, and Ollama with persistent named
-volumes. Copy the example environment file and choose a strong Neo4j password:
+Docker runs the API and keeps uploaded files in a persistent named volume. It
+uses the Neo4j and Ollama endpoints from `.env`; it does not create database or
+model-server containers. Copy the example environment file and replace its
+connection values:
 
 ```bash
-cp .env.example .env
+cp  .env .env.example
 ```
 
-Start the services, then download the configured embedding and chat models:
+Start the API:
 
 ```bash
 docker compose up -d --build
-docker compose --profile setup run --rm ollama-init
 ```
 
 The API is available at `http://localhost:8000`, the browser UI at
-`http://localhost:8000/ui/`, and Neo4j Browser at `http://localhost:7474`.
-Sign in to Neo4j with the `NEO4J_USERNAME` and `NEO4J_PASSWORD` values from
-`.env`. The setup profile only needs to run again after changing either Ollama
-model. To follow service logs, run `docker compose logs -f api`; to stop the
-stack while retaining indexed data and uploads, run `docker compose down`.
-
-The Docker Compose configuration overrides `NEO4J_URI`, `OLLAMA_BASE_URL`, and
-`OLLAMA_EMBED_BASE_URL` inside the API container so that they use the local
-service names. Host-side commands can continue using their own `.env` values.
+`http://localhost:8000/ui/`. For services running on the Docker host (including
+Ollama), use `host.docker.internal` rather than `localhost` in `.env`. To follow
+logs, run `docker compose logs -f api`; to stop the API while retaining uploads,
+run `docker compose down`.
 
 Run the API locally:
 
