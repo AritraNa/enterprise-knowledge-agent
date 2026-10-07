@@ -45,6 +45,7 @@ function guideKey() {
 }
 
 function addDemoGuide() {
+  if (page === "home") return;
   const guide = demoGuides[guideKey()];
   if (!guide) return;
   const section = document.createElement("aside");
@@ -57,6 +58,19 @@ function addDemoGuide() {
 }
 
 addDemoGuide();
+
+function setupSourcePicker() {
+  const dialog = document.querySelector("#source-picker");
+  const trigger = document.querySelector("#source-picker-trigger");
+  if (!dialog || !trigger) return;
+  trigger.addEventListener("click", () => dialog.showModal());
+  dialog.querySelector("[data-close-source-picker]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+}
+
+setupSourcePicker();
 
 function showResult(content, type = "success") {
   const result = document.querySelector("#result");

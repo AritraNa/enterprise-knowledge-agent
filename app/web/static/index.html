@@ -3,7 +3,34 @@
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Enterprise Knowledge Agent</title><link rel="stylesheet" href="/ui/styles.css"></head>
   <body data-page="home">
     <header class="topbar"><a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a><nav class="nav"><a href="/ui/policies-upload.html">Policies</a><a href="/ui/employees-upload.html">Employees</a><a href="/docs">API docs</a></nav></header>
-    <main class="page"><h1>Find answers with evidence.</h1><p class="lead">Upload company policies or employee data, search semantically, and ask questions that return source-backed answers.</p><section class="grid"><a class="card" href="/ui/policies-upload.html"><h2>Policies</h2><p>Upload PDFs, search policy evidence, and ask cited questions.</p><span class="action">Open policy workspace →</span></a><a class="card" href="/ui/employees-upload.html"><h2>Employees</h2><p>Ingest employee spreadsheets, search the directory, and ask grounded people questions.</p><span class="action">Open employee workspace →</span></a></section></main>
+    <main class="page home-page">
+      <section class="home-hero" aria-labelledby="home-title">
+        <h1 id="home-title">Answers your team can verify.</h1>
+        <p class="lead">Bring your company knowledge into one place, then search it or ask a question knowing every response can point back to its source.</p>
+        <button class="primary-link" id="source-picker-trigger" type="button" aria-haspopup="dialog">Add a knowledge source <span aria-hidden="true">→</span></button>
+      </section>
+      <section class="source-choice" id="choose-source" aria-labelledby="source-title">
+        <div class="section-intro">
+          <h2 id="source-title">What would you like to ask about?</h2>
+          <p>Choose a knowledge collection to ask a question and review its supporting evidence.</p>
+        </div>
+        <div class="source-options">
+          <a class="source-option" href="/ui/policies-ask.html"><span class="source-kind">Documents</span><h3>Company policies</h3><p>Ask a question and review the source-backed policy answer.</p><span class="action">Ask about a policy →</span></a>
+          <a class="source-option" href="/ui/employees-ask.html"><span class="source-kind">Structured data</span><h3>Employee directory</h3><p>Ask a people question and review the matching record citations.</p><span class="action">Ask about employees →</span></a>
+        </div>
+      </section>
+      <p class="home-note">Already indexed your knowledge? Use the workspace links in the sidebar to search or ask a question.</p>
+    </main>
+    <dialog class="source-modal" id="source-picker" aria-labelledby="source-picker-title" aria-describedby="source-picker-description">
+      <div class="modal-heading">
+        <div><h2 id="source-picker-title">Add a knowledge source</h2><p id="source-picker-description">Choose what you want to make searchable first.</p></div>
+        <button class="modal-close" type="button" data-close-source-picker aria-label="Close source picker">Close</button>
+      </div>
+      <div class="modal-options">
+        <a class="source-option" href="/ui/policies-upload.html"><span class="source-kind">Documents</span><h3>Policy upload</h3><p>Upload a PDF to search policy evidence and ask cited questions.</p><span class="action">Choose policy PDF →</span></a>
+        <a class="source-option" href="/ui/employees-upload.html"><span class="source-kind">Structured data</span><h3>Employee directory upload</h3><p>Upload an Excel file to search your people directory.</p><span class="action">Choose employee file →</span></a>
+      </div>
+    </dialog>
     <script src="/ui/app.js"></script>
   </body>
 </html>
