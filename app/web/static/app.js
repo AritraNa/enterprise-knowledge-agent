@@ -2,62 +2,24 @@ const page = document.body.dataset.page;
 const collection = document.body.dataset.collection;
 const operation = document.body.dataset.operation;
 
-const demoGuides = {
-  home: {
-    title: "Demo overview",
-    summary: "Use this page to frame the demo: two knowledge collections use the same evidence-first pattern, from source file to verified response.",
-    steps: ["Choose Policies or Employees.", "Upload a source file to parse, normalize, and index it in Neo4j.", "Search to show the retrieved evidence, then ask to show the cited answer."],
-  },
-  "policies-upload": {
-    title: "Policy ingestion demo",
-    summary: "Start here to show how an unstructured policy becomes searchable company knowledge.",
-    steps: ["Select a policy PDF and submit it.", "The service extracts text, splits it into meaningful chunks, creates embeddings, and replaces that source in Neo4j.", "Use the indexed-chunk count as confirmation before moving to Search or Ask."],
-  },
-  "policies-search": {
-    title: "Policy retrieval demo",
-    summary: "Show retrieval separately from generation so the audience can inspect the evidence that will ground an answer.",
-    steps: ["Enter a natural-language policy question.", "The service embeds the query and finds the closest policy chunks, applying active-policy filters by default.", "Point out the source and page on each result, then open Ask to demonstrate the grounded answer."],
-  },
-  "policies-ask": {
-    title: "Grounded policy answer demo",
-    summary: "This is the final RAG step: the assistant answers from retrieved policy evidence and returns the sources used.",
-    steps: ["Ask a question in everyday language.", "The workflow retrieves the best policy chunks before the model drafts an answer.", "Use the numbered sources to explain that the response is traceable to the uploaded policy."],
-  },
-  "employees-upload": {
-    title: "Employee ingestion demo",
-    summary: "Use this step to show how a structured employee spreadsheet becomes both a connected directory and a searchable knowledge source.",
-    steps: ["Select the employee spreadsheet and submit it.", "The importer validates rows, writes employee and department relationships, and stores embeddings in Neo4j.", "Use the indexed-record count to confirm the directory is ready."],
-  },
-  "employees-search": {
-    title: "Employee retrieval demo",
-    summary: "Demonstrate that a natural-language query can surface the most relevant employee records without requiring exact field matches.",
-    steps: ["Search for a team, department, skill, or role.", "The service embeds the request and ranks the closest employee records from the indexed directory.", "Review the returned evidence before asking a broader question."],
-  },
-  "employees-ask": {
-    title: "Grounded employee answer demo",
-    summary: "Finish the employee flow by showing an answer that is based on matching employee records and accompanied by citations.",
-    steps: ["Ask a people question such as who works in a department.", "The workflow retrieves matching employee records, then uses only that context to prepare the response.", "Call out the citations as the audit trail back to the directory."],
-  },
-};
-
-function guideKey() {
-  return page === "home" ? "home" : `${collection}-${operation}`;
+function setupSidebar() {
+  const nav = document.querySelector(".nav");
+  if (!nav) return;
+  const isHome = page === "home";
+  const isCompliance = document.body.dataset.agent === "compliance";
+  const isIngest = operation === "upload";
+  nav.setAttribute("aria-label", "Primary navigation");
+  nav.innerHTML = `<a class="${isHome ? "active" : ""}" href="/ui/">Knowledge Agent</a><a class="${isCompliance ? "active" : ""}" href="/ui/compliance.html">Compliance Agent</a><details class="nav-group"${isIngest ? " open" : ""}><summary>Ingest Docs</summary><div><a class="${collection === "policies" && isIngest ? "active" : ""}" href="/ui/policies-upload.html">Policy</a><a class="${collection === "employees" && isIngest ? "active" : ""}" href="/ui/employees-upload.html">Employee Data</a></div></details>`;
+  const ingestMenu = nav.querySelector(".nav-group");
+  ingestMenu.addEventListener("pointerenter", () => { ingestMenu.open = true; });
+  ingestMenu.addEventListener("pointerleave", () => { ingestMenu.open = false; });
+  ingestMenu.addEventListener("focusin", () => { ingestMenu.open = true; });
+  ingestMenu.addEventListener("focusout", (event) => {
+    if (!ingestMenu.contains(event.relatedTarget)) ingestMenu.open = false;
+  });
 }
 
-function addDemoGuide() {
-  if (page === "home") return;
-  const guide = demoGuides[guideKey()];
-  if (!guide) return;
-  const section = document.createElement("aside");
-  section.className = "demo-guide";
-  section.setAttribute("aria-labelledby", "demo-guide-title");
-  section.innerHTML = `<div class="demo-guide-heading"><span class="demo-badge">Demo guide</span><h2 id="demo-guide-title">${guide.title}</h2></div><p>${guide.summary}</p><ol>${guide.steps.map((step) => `<li>${step}</li>`).join("")}</ol>`;
-  const pageElement = document.querySelector("main.page");
-  const lead = pageElement.querySelector(".lead");
-  lead.after(section);
-}
-
-addDemoGuide();
+setupSidebar();
 
 function setupSourcePicker() {
   const dialog = document.querySelector("#source-picker");
@@ -72,7 +34,101 @@ function setupSourcePicker() {
 
 setupSourcePicker();
 
+function appendChatMessage(content, sender = "assistant", type = "evidence") {
+  const thread = document.querySelector(".chat-thread");
+  if (!thread) return;
+  const message = document.createElement("article");
+  message.className = `chat-message chat-message-${sender}${type === "error" ? " chat-message-error" : ""}`;
+  if (typeof content === "string") {
+    message.textContent = content;
+  } else {
+    message.append(content);
+  }
+  thread.append(message);
+  if (sender === "assistant") {
+    requestAnimationFrame(() => {
+      message.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  }
+}
+
+function animateDisclosure(details) {
+  const summary = details.querySelector("summary");
+  if (!summary) return;
+  summary.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (details.dataset.animating === "true") return;
+    const startHeight = details.getBoundingClientRect().height;
+    const opening = !details.open;
+    if (opening) details.open = true;
+    const endHeight = opening ? details.getBoundingClientRect().height : summary.getBoundingClientRect().height;
+    details.dataset.animating = "true";
+    details.style.height = `${startHeight}px`;
+    details.style.overflow = "hidden";
+    const animation = details.animate(
+      { height: [`${startHeight}px`, `${endHeight}px`] },
+      { duration: 220, easing: "cubic-bezier(.2, .8, .2, 1)" },
+    );
+    animation.onfinish = () => {
+      if (!opening) details.open = false;
+      details.style.height = "";
+      details.style.overflow = "";
+      delete details.dataset.animating;
+    };
+  });
+}
+
+function setupChatRoom() {
+  if (operation !== "ask") return;
+  const main = document.querySelector("main.page");
+  const panel = main?.querySelector(".panel");
+  const form = panel?.querySelector("#operation-form");
+  const result = panel?.querySelector("#result");
+  if (!main || !panel || !form || !result) return;
+  form.querySelector(".inline")?.remove();
+  const hrAccess = form.querySelector(".hr-access");
+  if (hrAccess) animateDisclosure(hrAccess);
+  const query = form.querySelector("textarea");
+  const sendButton = form.querySelector("button");
+  query.placeholder = "Ask a question…";
+  sendButton.setAttribute("aria-label", "Send question");
+  sendButton.innerHTML = `<svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7.4 18-3.7-7.3L3 10.1 21 3Z"/><path d="m9.9 13.7 4.4-4.4"/></svg>`;
+  const inputRow = document.createElement("div");
+  inputRow.className = "chat-input-row";
+  inputRow.append(query, sendButton);
+  form.prepend(inputRow);
+  const subject = document.body.dataset.agent === "compliance" ? "compliance controls" : collection === "employees" ? "the employee directory" : "company policies";
+  const thread = document.createElement("div");
+  thread.className = "chat-thread";
+  thread.setAttribute("aria-live", "polite");
+  const welcome = document.createElement("article");
+  welcome.className = "chat-message chat-message-assistant chat-welcome";
+  welcome.textContent = `Ask a question about ${subject}. I’ll answer using the indexed evidence and include citations.`;
+  thread.append(welcome, result);
+  main.classList.add("chat-page");
+  const chatHeader = document.createElement("div");
+  chatHeader.className = "chat-room-header";
+  [main.querySelector(".breadcrumbs"), main.querySelector("h1"), main.querySelector(".lead")]
+    .filter(Boolean)
+    .forEach((element) => chatHeader.append(element));
+  main.insertBefore(chatHeader, panel);
+  const updateChatHeader = () => {
+    chatHeader.classList.toggle("is-scrolled", window.scrollY > 8);
+  };
+  window.addEventListener("scroll", updateChatHeader, { passive: true });
+  updateChatHeader();
+  panel.classList.add("chat-shell");
+  form.classList.add("chat-composer");
+  panel.replaceChildren(thread, form);
+}
+
+setupChatRoom();
+
 function showResult(content, type = "success") {
+  if (operation === "ask" && document.querySelector(".chat-thread")) {
+    appendChatMessage(content, "assistant", type);
+    return;
+  }
   const result = document.querySelector("#result");
   result.className = `result ${type}`;
   result.innerHTML = "";
@@ -86,8 +142,21 @@ function showResult(content, type = "success") {
 
 function setLoading(button, loading, activity) {
   button.disabled = loading;
-  button.dataset.label ||= button.textContent;
-  button.textContent = loading ? "Working…" : button.dataset.label;
+  button.dataset.label ||= button.innerHTML;
+  button.innerHTML = loading ? "Working…" : button.dataset.label;
+  const chatThread = operation === "ask" && document.querySelector(".chat-thread");
+  if (chatThread) {
+    activity.hidden = !loading;
+    if (loading) {
+      activity.className = "activity chat-typing";
+      activity.textContent = "Finding supporting evidence…";
+      chatThread.append(activity);
+      requestAnimationFrame(() => { chatThread.scrollTop = chatThread.scrollHeight; });
+    } else {
+      activity.remove();
+    }
+    return;
+  }
   activity.hidden = !loading;
   if (loading) {
     const action = operation === "upload" ? "Indexing your file" : operation === "ask" ? "Retrieving evidence and preparing an answer" : "Searching the knowledge base";
@@ -180,7 +249,9 @@ function addActivityMessage(form) {
   activity.className = "activity";
   activity.hidden = true;
   activity.setAttribute("aria-live", "polite");
-  form.querySelector("button").after(activity);
+  const inputRow = form.querySelector(".chat-input-row");
+  if (inputRow) inputRow.after(activity);
+  else form.querySelector("button").after(activity);
   return activity;
 }
 
@@ -204,7 +275,9 @@ function enhanceFileInput(form) {
 function addQuerySuggestions(form) {
   if (operation === "upload") return;
   const query = form.querySelector("textarea");
-  const suggestions = collection === "policies"
+  const suggestions = document.body.dataset.agent === "compliance"
+    ? ["Does our travel policy cover manager approval?", "What policy evidence supports cyber safety controls?", "Which policy defines procurement approval limits?"]
+    : collection === "policies"
     ? ["What is the travel reimbursement policy?", "Who approves cyber safety policy?", "What is the leave policy?"]
     : ["Who works in Finance?", "Find people in Operations", "Who has Python experience?"];
   const group = document.createElement("div");
@@ -221,7 +294,8 @@ function addQuerySuggestions(form) {
     });
     group.append(chip);
   });
-  query.after(group);
+  if (form.classList.contains("chat-composer")) form.append(group);
+  else query.after(group);
 }
 
 if (page === "operation") {
@@ -238,19 +312,25 @@ if (page === "operation") {
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    setLoading(button, true, activity);
     try {
       let response;
       if (operation === "upload") {
         const file = form.querySelector("input[type=file]").files[0];
         if (!file) throw new Error("Choose a file before uploading.");
+        setLoading(button, true, activity);
         const formData = new FormData();
         formData.append("file", file);
         response = await fetch(`/v1/${collection}/upload`, { method: "POST", body: formData });
       } else {
         const query = form.querySelector("textarea").value.trim();
-        const limit = Number(form.querySelector("input[type=number]").value);
+        const limitInput = form.querySelector("input[type=number]");
+        const limit = limitInput ? Number(limitInput.value) : collection === "employees" ? 50 : 10;
         if (!query) throw new Error("Enter a question or search query.");
+        if (operation === "ask") {
+          appendChatMessage(query, "user");
+          form.querySelector("textarea").value = "";
+        }
+        setLoading(button, true, activity);
         const hrApiKey = form.querySelector("#hr-api-key")?.value.trim();
         const headers = { "Content-Type": "application/json" };
         if (hrApiKey) headers["X-API-Key"] = hrApiKey;

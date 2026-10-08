@@ -49,7 +49,7 @@ def close_vector_store_drivers() -> None:
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2_000)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=5, ge=1, le=100)
 
 
 class PolicyQueryRequest(QueryRequest):

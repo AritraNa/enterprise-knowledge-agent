@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Compliance Agent · Enterprise Knowledge Agent</title><link rel="stylesheet" href="/ui/styles.css"></head>
+  <body data-page="operation" data-agent="compliance" data-collection="policies" data-operation="ask">
+    <header class="topbar"><a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a><nav class="nav"></nav></header>
+    <main class="page">
+      <div class="breadcrumbs"><a href="/ui/">Knowledge Agent</a> / Compliance Agent</div>
+      <h1>Check policy evidence for compliance.</h1>
+      <p class="lead">Ask about a control, requirement, or approval process. The agent answers only from your indexed policies and returns the supporting citations.</p>
+      <section class="panel">
+        <h2>Ask a compliance question</h2>
+        <form id="operation-form"><label for="query">Requirement or control</label><textarea id="query" placeholder="e.g. Does our policy require approval for travel reimbursement?" required></textarea><div class="inline"><div><label for="limit">Evidence</label><input id="limit" type="number" min="1" max="20" value="5"></div></div><button type="submit">Assess compliance</button></form>
+        <div id="result" class="result"></div>
+      </section>
+    </main>
+    <script src="/ui/app.js"></script>
+  </body>
+</html>
