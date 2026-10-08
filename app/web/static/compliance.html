@@ -5,11 +5,18 @@
     <header class="topbar"><a class="brand" href="/ui/"><span class="brand-mark">✦</span>Enterprise Knowledge Agent</a><nav class="nav"></nav></header>
     <main class="page">
       <div class="breadcrumbs"><a href="/ui/">Knowledge Agent</a> / Compliance Agent</div>
-      <h1>Check policy evidence for compliance.</h1>
-      <p class="lead">Ask about a control, requirement, or approval process. The agent answers only from your indexed policies and returns the supporting citations.</p>
+      <h1>Review a document against your policies.</h1>
+      <p class="lead">Upload a proposed PDF and the agent will compare it with your already indexed policies, flag gaps or conflicts, and cite the policy clauses it used.</p>
       <section class="panel">
-        <h2>Ask a compliance question</h2>
-        <form id="operation-form"><label for="query">Requirement or control</label><textarea id="query" placeholder="e.g. Does our policy require approval for travel reimbursement?" required></textarea><div class="inline"><div><label for="limit">Evidence</label><input id="limit" type="number" min="1" max="20" value="5"></div></div><button type="submit">Assess compliance</button></form>
+        <h2>Upload for compliance review</h2>
+        <form id="operation-form" enctype="multipart/form-data">
+          <label for="document">Document to review</label>
+          <input id="document" type="file" accept="application/pdf,.pdf" required>
+          <p class="form-note">PDF only. The file is compared with active policy documents already indexed in the knowledge base.</p>
+          <label for="query">Review focus <span>(optional)</span></label>
+          <textarea id="query" placeholder="e.g. Review this supplier agreement for procurement and data-security requirements."></textarea>
+          <button type="submit">Review document</button>
+        </form>
         <div id="result" class="result"></div>
       </section>
     </main>

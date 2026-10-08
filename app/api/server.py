@@ -18,12 +18,14 @@ from app.ingestion.policy_pdf_importer import PolicyPDFImporter
 from app.retrieval.employee_vector_store import EmployeeVectorStore
 from app.retrieval.policy_vector_store import PolicyVectorStore
 from app.workflows.employee_rag import EmployeeRAGWorkflow
+from app.workflows.compliance_review import ComplianceReviewWorkflow
 from app.workflows.policy_rag import PolicyRAGWorkflow
 
 load_dotenv()
 
 POLICY_UPLOAD_DIR = Path("data/uploads/policies")
 EMPLOYEE_UPLOAD_DIR = Path("data/uploads/employees")
+COMPLIANCE_UPLOAD_DIR = Path("data/uploads/compliance-reviews")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 
 app = FastAPI(
@@ -39,6 +41,7 @@ _policy_vector_store = PolicyVectorStore()
 _employee_vector_store = EmployeeVectorStore()
 _policy_workflow = PolicyRAGWorkflow(vector_store=_policy_vector_store)
 _employee_workflow = EmployeeRAGWorkflow(vector_store=_employee_vector_store)
+_compliance_workflow = ComplianceReviewWorkflow(vector_store=_policy_vector_store)
 
 
 @app.on_event("shutdown")
@@ -99,6 +102,12 @@ class IngestResponse(BaseModel):
     filename: str
     stored_path: str
     records_indexed: int
+
+
+class ComplianceReviewResponse(BaseModel):
+    document_name: str
+    assessment: str
+    citations: list[Citation]
 
 
 @app.get("/health")
@@ -227,6 +236,45 @@ def ask_policies(request: PolicyQueryRequest) -> AskResponse:
             detail=f"Policy answer service is unavailable: {error}",
         ) from error
     return _ask_response("policies", result)
+
+
+@app.post("/v1/compliance/review", response_model=ComplianceReviewResponse)
+async def review_compliance_document(
+    file: Annotated[UploadFile, File(description="A document to compare with indexed policy PDFs")],
+    instructions: Annotated[str | None, Form()] = None,
+) -> ComplianceReviewResponse:
+    stored_path, original_name = await _save_upload(
+        file, COMPLIANCE_UPLOAD_DIR, {".pdf"}
+    )
+    try:
+        candidate_chunks = await run_in_threadpool(
+            PolicyPDFImporter().load, stored_path, original_name
+        )
+        result = await run_in_threadpool(
+            _compliance_workflow.review,
+            original_name,
+            candidate_chunks,
+            instructions or "",
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unable to review the uploaded PDF: {error}",
+        ) from error
+
+    return ComplianceReviewResponse(
+        document_name=original_name,
+        assessment=result["assessment"],
+        citations=[
+            Citation(
+                citation_id=item["citation_id"],
+                source_document=item["source_document"],
+                section=item["section"],
+                page=item["page"] or None,
+            )
+            for item in result["citations"]
+        ],
+    )
 
 
 @app.post("/v1/employees/ask", response_model=AskResponse)

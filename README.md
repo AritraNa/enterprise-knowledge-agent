@@ -224,6 +224,10 @@ The same server provides a minimal browser interface at
 - `POST /v1/policies/search` and `POST /v1/policies/ask` accept `query`,
   `limit`, and optional `policy_type`, `owner_department`, `effective_date`,
   and `status` metadata filters. `status` defaults to `active`.
+- `POST /v1/compliance/review` accepts a proposed PDF under `file` and an
+  optional multipart `instructions` field. It compares the document to active,
+  indexed policy clauses and returns a grounded review with citations. This is
+  surfaced in the Compliance Agent page.
 
 ### Employee endpoints
 
