@@ -58,20 +58,25 @@ function animateDisclosure(details) {
   summary.addEventListener("click", (event) => {
     event.preventDefault();
     if (details.dataset.animating === "true") return;
-    const startHeight = details.getBoundingClientRect().height;
+    const startWidth = details.getBoundingClientRect().width;
     const opening = !details.open;
     if (opening) details.open = true;
-    const endHeight = opening ? details.getBoundingClientRect().height : summary.getBoundingClientRect().height;
+    let endWidth = details.getBoundingClientRect().width;
+    if (!opening) {
+      details.open = false;
+      endWidth = details.getBoundingClientRect().width;
+      details.open = true;
+    }
     details.dataset.animating = "true";
-    details.style.height = `${startHeight}px`;
+    details.style.flexBasis = `${startWidth}px`;
     details.style.overflow = "hidden";
     const animation = details.animate(
-      { height: [`${startHeight}px`, `${endHeight}px`] },
+      { flexBasis: [`${startWidth}px`, `${endWidth}px`] },
       { duration: 220, easing: "cubic-bezier(.2, .8, .2, 1)" },
     );
     animation.onfinish = () => {
       if (!opening) details.open = false;
-      details.style.height = "";
+      details.style.flexBasis = "";
       details.style.overflow = "";
       delete details.dataset.animating;
     };
@@ -87,7 +92,22 @@ function setupChatRoom() {
   if (!main || !panel || !form || !result) return;
   form.querySelector(".inline")?.remove();
   const hrAccess = form.querySelector(".hr-access");
-  if (hrAccess) animateDisclosure(hrAccess);
+  if (hrAccess) {
+    const hrKeyInput = hrAccess.querySelector("#hr-api-key");
+    const hrSummary = hrAccess.querySelector("summary");
+    if (hrSummary) hrSummary.textContent = "HR access for compensation data";
+    hrKeyInput?.setAttribute("aria-label", "Authorized HR API key");
+    hrKeyInput?.setAttribute("placeholder", "Paste authorized API key");
+    const hrNote = hrAccess.querySelector("p");
+    if (hrNote) hrNote.textContent = "For authorized HR users. Your key is used once and never stored.";
+    if (hrNote && hrKeyInput) {
+      const hrContent = document.createElement("div");
+      hrContent.className = "hr-access-content";
+      hrContent.append(hrNote, hrKeyInput);
+      hrAccess.append(hrContent);
+    }
+    animateDisclosure(hrAccess);
+  }
   const query = form.querySelector("textarea");
   const sendButton = form.querySelector("button");
   query.placeholder = "Ask a question…";
