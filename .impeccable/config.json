@@ -63,6 +63,12 @@
         ],
         "createdAt": "2026-10-08T20:37:20.238Z",
         "reason": "Codex: detector could not resolve /ui/styles.css; the rendered page uses the existing responsive h1 and h2 hierarchy."
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-09T04:53:49.102Z",
+        "reason": "user confirmed: requested reverting to and keeping the earlier Inter font"
       }
     ]
   }
