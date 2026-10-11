@@ -158,6 +158,26 @@ function setupChatRoom() {
 
 setupChatRoom();
 
+function setupIngestionPage() {
+  if (operation !== "upload") return;
+  const main = document.querySelector("main.page");
+  const panel = main?.querySelector(".panel");
+  const form = panel?.querySelector("#operation-form");
+  const fileInput = form?.querySelector("input[type=file]");
+  const fileLabel = form?.querySelector('label[for="file"]');
+  const submitButton = form?.querySelector("button");
+  if (!main || !panel || !form || !fileInput || !fileLabel || !submitButton) return;
+  main.classList.add("ingest-page");
+  panel.classList.add("ingest-shell");
+  form.classList.add("ingest-composer");
+  const inputRow = document.createElement("div");
+  inputRow.className = "ingest-input-row";
+  inputRow.append(fileLabel, fileInput, submitButton);
+  form.prepend(inputRow);
+}
+
+setupIngestionPage();
+
 function showResult(content, type = "success") {
   if (operation === "ask" && document.querySelector(".chat-thread")) {
     appendChatMessage(content, "assistant", type);
@@ -320,7 +340,9 @@ function enhanceFileInput(form) {
   const status = document.createElement("p");
   status.className = "file-status";
   status.textContent = isChatAttachment ? "No document attached." : "Choose a file to begin.";
-  input.after(status);
+  const ingestRow = form.querySelector(".ingest-input-row");
+  if (ingestRow && !isChatAttachment) ingestRow.after(status);
+  else input.after(status);
   input.addEventListener("change", () => {
     const file = input.files[0];
     status.textContent = file

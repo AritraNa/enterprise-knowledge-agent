@@ -269,6 +269,24 @@ h1 { color: #f1edf5; font-size: clamp(2.2rem, 4.7vw, 4.45rem); line-height: .99;
 .chat-page h1 { font-size: clamp(2rem, 3.5vw, 3.25rem); margin-bottom: 10px; text-shadow: none; }
 .chat-page .lead { max-width: 760px; }
 .chat-page > .grid { display: none; }
+.ingest-page { display: flex; flex-direction: column; min-height: 100vh; padding: 42px clamp(28px, 4vw, 64px) 96px; }
+.ingest-page h1 { max-width: 760px; font-size: clamp(2rem, 3.5vw, 3.25rem); margin-bottom: 10px; text-shadow: none; }
+.ingest-page .lead { max-width: 760px; }
+.panel.ingest-shell { width: 100%; margin-top: 30px; padding: 0; overflow: visible; background: transparent; border: 0; box-shadow: none; }
+.ingest-shell h2 { margin: 0 0 12px; color: #f1edf5; font-size: 1.1rem; letter-spacing: -.02em; }
+.ingest-composer { width: 100%; }
+.ingest-input-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 6px 7px 6px 22px; background: #fff; border: 1px solid rgba(224, 229, 240, .9); border-radius: 34px; box-shadow: 0 12px 26px rgba(11, 12, 20, .12); }
+.ingest-input-row > label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.ingest-input-row input[type="file"] { flex: 1; min-width: 0; padding: 10px 0; color: #4a5570; background: transparent; border: 0; border-radius: 0; }
+.ingest-input-row input[type="file"]::file-selector-button { margin-right: 12px; padding: 8px 11px; color: #4050ab; background: #eef0ff; border: 0; border-radius: 18px; font: inherit; font-weight: 700; cursor: pointer; }
+.ingest-input-row > button { flex: 0 0 auto; min-height: 52px; margin: 0; padding: 0 20px; color: #fff; background: #2f387e; border-radius: 26px; box-shadow: none; }
+.ingest-input-row > button:hover { background: #22285e; }
+.ingest-composer .file-status { margin: 10px 22px 0; color: #d1cadb; }
+.ingest-shell .result { margin-top: 18px; }
+.ingest-shell .ingested-files { margin-top: 30px; padding-top: 22px; border-top-color: rgba(225, 230, 240, .32); }
+.ingest-shell .ingested-files h3 { color: #f1edf5; }
+.ingest-shell .ingested-files-heading span, .ingest-shell .ingested-files-empty { color: #d1cadb; }
+.ingest-shell .ingested-files-list li { box-shadow: 0 6px 16px rgba(11, 12, 20, .1); }
 .panel.chat-shell { display: flex; flex-direction: column; margin-top: 26px; padding: 0; overflow: visible; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
 .chat-thread { display: flex; flex-direction: column; gap: 14px; overflow: visible; padding: 26px clamp(20px, 3vw, 40px); background: transparent; }
 .chat-thread::-webkit-scrollbar { display: none; }
