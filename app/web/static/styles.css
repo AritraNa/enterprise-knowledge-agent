@@ -233,8 +233,11 @@ h1 { color: #f1edf5; font-size: clamp(2.2rem, 4.7vw, 4.45rem); line-height: .99;
 .ingested-files-empty { margin: 12px 0 0; color: var(--muted); font-size: .9rem; }
 .ingested-files-list { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
 .ingested-files-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 10px 12px; color: #39425c; background: #f7f8fc; border: 1px solid #e5e9f2; border-radius: 10px; font-size: .88rem; }
-.ingested-files-list li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uploaded-file-meta { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.uploaded-file-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ingested-files-list code { flex: 0 0 auto; padding: 3px 6px; color: var(--brand-dark); background: #eceefe; border-radius: 5px; font-family: inherit; font-size: .75rem; font-weight: 700; }
+.delete-upload { flex: 0 0 auto; min-height: 30px; margin: 0; padding: 5px 9px; color: #a23b45; background: #fff4f4; border: 1px solid #e9bec2; border-radius: 7px; box-shadow: none; font-size: .78rem; font-weight: 700; }
+.delete-upload:hover { color: #fff; background: #9d3540; border-color: #9d3540; }
 
 .home-page { padding-top: clamp(54px, 10vh, 112px); }
 .home-hero { max-width: 900px; }

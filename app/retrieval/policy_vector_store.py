@@ -89,6 +89,23 @@ class PolicyVectorStore:
         with self.driver.session() as session:
             session.run(query, rows=rows).consume()
 
+    def delete_source(self, source_path: str) -> int:
+        """Remove one uploaded policy and every graph node derived from it."""
+        query = """
+        MATCH (document:PolicyDocument)-[:HAS_SECTION]->(section:PolicySection)-[:HAS_CHUNK]->(chunk:PolicyChunk)
+        WHERE chunk.source_path = $source_path
+        WITH collect(DISTINCT document) AS documents,
+             collect(DISTINCT section) AS sections,
+             collect(DISTINCT chunk) AS chunks
+        FOREACH (chunk IN chunks | DETACH DELETE chunk)
+        FOREACH (section IN sections | DETACH DELETE section)
+        FOREACH (document IN documents | DETACH DELETE document)
+        RETURN size(chunks) AS chunks_removed
+        """
+        with self.driver.session() as session:
+            record = session.run(query, source_path=source_path).single()
+        return int(record["chunks_removed"]) if record else 0
+
     def search_with_scores(
         self, query: str, limit: int = 5, filters: dict | None = None
     ) -> list[tuple[Document, float]]:

@@ -404,7 +404,38 @@ async function loadUploadedFiles() {
       const id = document.createElement("code");
       name.textContent = upload.display_name;
       id.textContent = upload.upload_id;
-      item.append(name, id);
+      const metadata = document.createElement("div");
+      metadata.className = "uploaded-file-meta";
+      metadata.append(name, id);
+      item.append(metadata);
+      if (collection === "policies") {
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "delete-upload";
+        deleteButton.textContent = "Delete";
+        deleteButton.setAttribute("aria-label", `Delete ${upload.display_name}`);
+        deleteButton.addEventListener("click", async () => {
+          const confirmed = window.confirm(
+            `Delete ${upload.display_name}? This permanently removes its policy graph from Neo4j.`,
+          );
+          if (!confirmed) return;
+          deleteButton.disabled = true;
+          deleteButton.textContent = "Deleting…";
+          try {
+            const response = await fetch(`/v1/policies/uploads/${encodeURIComponent(upload.upload_id)}`, {
+              method: "DELETE",
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(apiError(data));
+            loadUploadedFiles();
+          } catch (error) {
+            deleteButton.disabled = false;
+            deleteButton.textContent = "Delete";
+            window.alert(error.message || "Unable to delete this policy.");
+          }
+        });
+        item.append(deleteButton);
+      }
       list.append(item);
     });
     empty.hidden = uploads.length > 0;

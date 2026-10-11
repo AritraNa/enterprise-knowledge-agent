@@ -111,6 +111,11 @@ class UploadedFile(BaseModel):
     upload_id: str
 
 
+class DeletePolicyResponse(BaseModel):
+    filename: str
+    records_removed: int
+
+
 class ComplianceReviewResponse(BaseModel):
     document_name: str
     assessment: str
@@ -198,6 +203,28 @@ def list_policy_uploads() -> list[UploadedFile]:
 @app.get("/v1/employees/uploads", response_model=list[UploadedFile])
 def list_employee_uploads() -> list[UploadedFile]:
     return _list_uploads(EMPLOYEE_UPLOAD_DIR, {".xlsx"})
+
+
+@app.delete("/v1/policies/uploads/{upload_id}", response_model=DeletePolicyResponse)
+def delete_policy_upload(upload_id: str) -> DeletePolicyResponse:
+    """Delete the stored PDF and its PolicyDocument graph, sections, and chunks."""
+    stored_path = _find_upload(POLICY_UPLOAD_DIR, {".pdf"}, upload_id)
+    if stored_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy upload not found.")
+
+    try:
+        records_removed = _policy_vector_store.delete_source(str(stored_path.resolve()))
+        stored_path.unlink()
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to delete the policy: {error}",
+        ) from error
+
+    return DeletePolicyResponse(
+        filename=stored_path.name,
+        records_removed=records_removed,
+    )
 
 
 @app.post("/v1/policies/search", response_model=SearchResponse)
@@ -377,6 +404,21 @@ def _list_uploads(
         UploadedFile(display_name=path.name, upload_id=_upload_id(path))
         for path in uploads
     ]
+
+
+def _find_upload(
+    destination_dir: Path, allowed_extensions: set[str], upload_id: str
+) -> Path | None:
+    if not destination_dir.exists() or not upload_id.isalnum():
+        return None
+    for path in destination_dir.iterdir():
+        if (
+            path.is_file()
+            and path.suffix.lower() in allowed_extensions
+            and _upload_id(path) == upload_id
+        ):
+            return path
+    return None
 
 
 def _ingest_policy(
