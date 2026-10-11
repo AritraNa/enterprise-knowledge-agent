@@ -100,8 +100,15 @@ class AskResponse(BaseModel):
 class IngestResponse(BaseModel):
     collection: Literal["policies", "employees"]
     filename: str
+    display_name: str
+    upload_id: str
     stored_path: str
     records_indexed: int
+
+
+class UploadedFile(BaseModel):
+    display_name: str
+    upload_id: str
 
 
 class ComplianceReviewResponse(BaseModel):
@@ -147,6 +154,8 @@ async def upload_policy(
     return IngestResponse(
         collection="policies",
         filename=original_name,
+        display_name=stored_path.name,
+        upload_id=_upload_id(stored_path),
         stored_path=str(stored_path),
         records_indexed=records_indexed,
     )
@@ -174,9 +183,21 @@ async def upload_employees(
     return IngestResponse(
         collection="employees",
         filename=original_name,
+        display_name=stored_path.name,
+        upload_id=_upload_id(stored_path),
         stored_path=str(stored_path),
         records_indexed=records_indexed,
     )
+
+
+@app.get("/v1/policies/uploads", response_model=list[UploadedFile])
+def list_policy_uploads() -> list[UploadedFile]:
+    return _list_uploads(POLICY_UPLOAD_DIR, {".pdf"})
+
+
+@app.get("/v1/employees/uploads", response_model=list[UploadedFile])
+def list_employee_uploads() -> list[UploadedFile]:
+    return _list_uploads(EMPLOYEE_UPLOAD_DIR, {".xlsx"})
 
 
 @app.post("/v1/policies/search", response_model=SearchResponse)
@@ -306,7 +327,11 @@ async def _save_upload(
         )
 
     destination_dir.mkdir(parents=True, exist_ok=True)
-    stored_path = destination_dir / f"{uuid4().hex}{suffix}"
+    safe_stem = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in Path(original_name).stem
+    ).strip("-_") or "upload"
+    stored_path = destination_dir / f"{safe_stem}--{uuid4().hex[:8]}{suffix}"
     bytes_written = 0
 
     try:
@@ -326,6 +351,24 @@ async def _save_upload(
         await file.close()
 
     return stored_path, original_name
+
+
+def _upload_id(stored_path: Path) -> str:
+    return stored_path.stem.rsplit("--", maxsplit=1)[-1]
+
+
+def _list_uploads(destination_dir: Path, allowed_extensions: set[str]) -> list[UploadedFile]:
+    if not destination_dir.exists():
+        return []
+    uploads = [
+        path for path in destination_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in allowed_extensions
+    ]
+    uploads.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return [
+        UploadedFile(display_name=path.name, upload_id=_upload_id(path))
+        for path in uploads
+    ]
 
 
 def _ingest_policy(

@@ -111,23 +111,21 @@ function setupChatRoom() {
   const query = form.querySelector("textarea");
   const sendButton = form.querySelector("button");
   const isCompliance = document.body.dataset.agent === "compliance";
-  query.placeholder = isCompliance ? "Add a review focus (optional)…" : "Ask a question…";
+  query.placeholder = isCompliance
+    ? "Attach a PDF, then add a review focus (optional)…"
+    : collection === "employees"
+      ? "Ask a question about the employee directory. I’ll answer using the indexed evidence and include citations."
+      : "Ask a question about company policies. I’ll answer using the indexed evidence and include citations.";
   sendButton.setAttribute("aria-label", "Send question");
   sendButton.innerHTML = `<svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7.4 18-3.7-7.3L3 10.1 21 3Z"/><path d="m9.9 13.7 4.4-4.4"/></svg>`;
   const inputRow = document.createElement("div");
   inputRow.className = "chat-input-row";
   inputRow.append(query, sendButton);
   form.prepend(inputRow);
-  const subject = isCompliance ? "a PDF against your indexed policies" : collection === "employees" ? "the employee directory" : "company policies";
   const thread = document.createElement("div");
   thread.className = "chat-thread";
   thread.setAttribute("aria-live", "polite");
-  const welcome = document.createElement("article");
-  welcome.className = "chat-message chat-message-assistant chat-welcome";
-  welcome.textContent = isCompliance
-    ? "Attach a PDF and I’ll compare it against your indexed policies, then return a cited compliance review."
-    : `Ask a question about ${subject}. I’ll answer using the indexed evidence and include citations.`;
-  thread.append(welcome, result);
+  thread.append(result);
   main.classList.add("chat-page");
   const chatHeader = document.createElement("div");
   chatHeader.className = "chat-room-header";
@@ -141,7 +139,7 @@ function setupChatRoom() {
   window.addEventListener("scroll", updateChatHeader, { passive: true });
   updateChatHeader();
   panel.classList.add("chat-shell");
-  form.classList.add("chat-composer");
+  form.classList.add("chat-composer", "chat-composer-centered");
   if (isCompliance) {
     const fileInput = form.querySelector("input[type=file]");
     const fileLabel = form.querySelector('label[for="document"]');
@@ -366,12 +364,41 @@ function addQuerySuggestions(form) {
   else query.after(group);
 }
 
+async function loadUploadedFiles() {
+  if (operation !== "upload") return;
+  const list = document.querySelector("[data-upload-list]");
+  const empty = document.querySelector("[data-upload-empty]");
+  const count = document.querySelector("[data-upload-count]");
+  if (!list || !empty || !count) return;
+  try {
+    const response = await fetch(`/v1/${collection}/uploads`);
+    if (!response.ok) throw new Error("Unable to load uploads.");
+    const uploads = await response.json();
+    list.replaceChildren();
+    uploads.forEach((upload) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      const id = document.createElement("code");
+      name.textContent = upload.display_name;
+      id.textContent = upload.upload_id;
+      item.append(name, id);
+      list.append(item);
+    });
+    empty.hidden = uploads.length > 0;
+    count.textContent = uploads.length ? `${uploads.length} file${uploads.length === 1 ? "" : "s"}` : "";
+  } catch {
+    empty.textContent = "Uploaded files will appear here after indexing.";
+    empty.hidden = false;
+  }
+}
+
 if (page === "operation") {
   const form = document.querySelector("#operation-form");
   const button = form.querySelector("button");
   const activity = addActivityMessage(form);
   const clearFileInput = enhanceFileInput(form);
   addQuerySuggestions(form);
+  loadUploadedFiles();
   form.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -409,6 +436,7 @@ if (page === "operation") {
         const limit = limitInput ? Number(limitInput.value) : collection === "employees" ? 50 : 10;
         if (!query) throw new Error("Enter a question or search query.");
         if (operation === "ask") {
+          form.classList.remove("chat-composer-centered");
           appendChatMessage(query, "user");
           form.querySelector("textarea").value = "";
         }
@@ -426,6 +454,7 @@ if (page === "operation") {
       if (!response.ok) throw new Error(apiError(data));
       if (operation === "upload") {
         showResult(`Indexed ${data.records_indexed} ${collection === "policies" ? "policy chunks" : "employee records"} from ${data.filename}.`);
+        loadUploadedFiles();
         if (response.status === 201) clearFileInput();
       } else if (operation === "search") {
         showResult(renderSearch(data), "evidence");

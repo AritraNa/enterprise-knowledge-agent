@@ -20,8 +20,12 @@
         <h2>Upload spreadsheet</h2>
         <form id="operation-form"><label for="file">Excel file</label><input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required><button type="submit">Upload and ingest</button></form>
         <div id="result" class="result"></div>
+        <section class="ingested-files" aria-labelledby="employee-uploads-title">
+          <div class="ingested-files-heading"><h3 id="employee-uploads-title">Uploaded employee files</h3><span data-upload-count></span></div>
+          <p class="ingested-files-empty" data-upload-empty>No employee spreadsheets uploaded yet.</p>
+          <ul class="ingested-files-list" data-upload-list></ul>
+        </section>
       </section>
-      <section class="grid"><a class="card" href="/ui/employees-search.html"><h2>Search employees</h2><span class="action">Search directory →</span></a><a class="card" href="/ui/employees-ask.html"><h2>Ask a question</h2><span class="action">Ask directory →</span></a></section>
     </main>
     <script src="/ui/app.js"></script>
   </body>
