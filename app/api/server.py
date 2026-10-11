@@ -261,7 +261,9 @@ def ask_policies(request: PolicyQueryRequest) -> AskResponse:
 
 @app.post("/v1/compliance/review", response_model=ComplianceReviewResponse)
 async def review_compliance_document(
-    file: Annotated[UploadFile, File(description="A document to compare with indexed policy PDFs")],
+    file: Annotated[
+        UploadFile, File(description="A document to compare with indexed policy PDFs")
+    ],
     instructions: Annotated[str | None, Form()] = None,
 ) -> ComplianceReviewResponse:
     stored_path, original_name = await _save_upload(
@@ -327,10 +329,13 @@ async def _save_upload(
         )
 
     destination_dir.mkdir(parents=True, exist_ok=True)
-    safe_stem = "".join(
-        character if character.isalnum() or character in {"-", "_"} else "-"
-        for character in Path(original_name).stem
-    ).strip("-_") or "upload"
+    safe_stem = (
+        "".join(
+            character if character.isalnum() or character in {"-", "_"} else "-"
+            for character in Path(original_name).stem
+        ).strip("-_")
+        or "upload"
+    )
     stored_path = destination_dir / f"{safe_stem}--{uuid4().hex[:8]}{suffix}"
     bytes_written = 0
 
@@ -357,11 +362,14 @@ def _upload_id(stored_path: Path) -> str:
     return stored_path.stem.rsplit("--", maxsplit=1)[-1]
 
 
-def _list_uploads(destination_dir: Path, allowed_extensions: set[str]) -> list[UploadedFile]:
+def _list_uploads(
+    destination_dir: Path, allowed_extensions: set[str]
+) -> list[UploadedFile]:
     if not destination_dir.exists():
         return []
     uploads = [
-        path for path in destination_dir.iterdir()
+        path
+        for path in destination_dir.iterdir()
         if path.is_file() and path.suffix.lower() in allowed_extensions
     ]
     uploads.sort(key=lambda path: path.stat().st_mtime, reverse=True)

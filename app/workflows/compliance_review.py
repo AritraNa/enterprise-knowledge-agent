@@ -30,7 +30,10 @@ class ComplianceReviewWorkflow:
         self.chat_model = chat_model
 
     def review(
-        self, document_name: str, candidate_chunks: list[Document], instructions: str = ""
+        self,
+        document_name: str,
+        candidate_chunks: list[Document],
+        instructions: str = "",
     ) -> dict:
         if not candidate_chunks:
             return {
@@ -52,8 +55,11 @@ class ComplianceReviewWorkflow:
             [
                 (
                     "system",
-                    """You are a compliance reviewer. Compare the uploaded document to the
-provided policy evidence only. Produce a concise review with these headings:
+                    """You are a compliance reviewer. Each comparison packet begins with
+an excerpt from the uploaded document, followed by relevant indexed policy
+evidence. Assess whether the uploaded document conforms to that evidence.
+Never treat policy evidence as if it were content of the uploaded document.
+Produce a concise review with these headings:
 Overall assessment, Matches, Gaps or conflicts, and Recommended follow-up.
 For each finding, say what the uploaded document states (or does not state),
 then explain how that relates to the policy. Do not invent requirements or
@@ -65,8 +71,8 @@ support a conclusion, explicitly say that it needs human review.""",
                     "human",
                     f"Uploaded document: {document_name}\n"
                     f"Review focus: {instructions or 'General policy compliance'}\n\n"
-                    f"Uploaded document text:\n{self._format_candidate(candidate_chunks)}\n\n"
-                    f"Indexed policy evidence:\n{self._format_evidence(evidence)}",
+                    "Comparison packets:\n"
+                    f"{self._format_comparison_packets(candidate_chunks, evidence)}",
                 ),
             ]
         )
@@ -74,7 +80,9 @@ support a conclusion, explicitly say that it needs human review.""",
         cited_ids = {int(value) for value in re.findall(r"\[(\d+)\]", assessment)}
         return {
             "assessment": assessment,
-            "citations": [item for item in evidence if item["citation_id"] in cited_ids],
+            "citations": [
+                item for item in evidence if item["citation_id"] in cited_ids
+            ],
         }
 
     def _retrieve_policy_evidence(
@@ -98,7 +106,7 @@ support a conclusion, explicitly say that it needs human review.""",
                 if existing is None or score > existing[1]:
                     selected[key] = (policy, score)
 
-        ranked = sorted(selected.values(), key=lambda item: item[1], reverse=True)[:15]
+        ranked = sorted(selected.values(), key=lambda item: item[1], reverse=True)[:12]
         return [
             {
                 "citation_id": citation_id,
@@ -128,25 +136,30 @@ support a conclusion, explicitly say that it needs human review.""",
         return self.chat_model
 
     @staticmethod
-    def _format_candidate(chunks: list[Document]) -> str:
-        # Keep the prompt bounded while retaining section/page traceability.
+    def _format_comparison_packets(
+        chunks: list[Document], evidence: list[ComplianceEvidence]
+    ) -> str:
+        """Keep uploaded excerpts adjacent to policy evidence within a safe context budget."""
+        sample_count = min(6, len(chunks))
+        sample_indexes = [
+            round(index * (len(chunks) - 1) / max(sample_count - 1, 1))
+            for index in range(sample_count)
+        ]
         parts: list[str] = []
-        remaining = 18_000
-        for chunk in chunks:
-            prefix = f"Page {chunk.metadata['page']} — {chunk.metadata['section']}\n"
-            content = chunk.page_content[: max(0, remaining - len(prefix))]
-            if not content:
-                break
-            parts.append(prefix + content)
-            remaining -= len(prefix) + len(content)
-            if remaining <= 0:
-                break
-        return "\n\n".join(parts)
-
-    @staticmethod
-    def _format_evidence(evidence: list[ComplianceEvidence]) -> str:
-        return "\n\n".join(
-            f"[{item['citation_id']}] Source: {item['source_document']} | "
-            f"Section: {item['section']} | Page: {item['page']}\n{item['content']}"
-            for item in evidence
-        )
+        for packet_number, chunk_index in enumerate(sample_indexes, start=1):
+            chunk = chunks[chunk_index]
+            policies = evidence[(packet_number - 1) * 2 : packet_number * 2]
+            if not policies:
+                continue
+            policy_text = "\n\n".join(
+                f"Policy [{item['citation_id']}] — {item['source_document']} | "
+                f"{item['section']} | page {item['page']}\n{item['content'][:650]}"
+                for item in policies
+            )
+            parts.append(
+                f"   {packet_number}\n"
+                f"Uploaded document excerpt — page {chunk.metadata['page']} | "
+                f"{chunk.metadata['section']}\n{chunk.page_content[:700]}\n\n"
+                f"Relevant policy evidence:\n{policy_text}"
+            )
+        return "\n\n---\n\n".join(parts)

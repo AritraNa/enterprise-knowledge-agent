@@ -345,6 +345,7 @@ function enhanceFileInput(form) {
   else input.after(status);
   input.addEventListener("change", () => {
     const file = input.files[0];
+    if (file && isChatAttachment) form.classList.remove("chat-composer-centered");
     status.textContent = file
       ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB ${isChatAttachment ? "ready to review" : "ready to index"}`
       : isChatAttachment ? "No document attached." : "Choose a file to begin.";
