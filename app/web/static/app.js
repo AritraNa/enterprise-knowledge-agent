@@ -2,6 +2,17 @@ const page = document.body.dataset.page;
 const collection = document.body.dataset.collection;
 const operation = document.body.dataset.operation;
 
+function setupFavicon() {
+  if (document.head.querySelector('link[rel="icon"]')) return;
+  const icon = document.createElement("link");
+  icon.rel = "icon";
+  icon.type = "image/png";
+  icon.href = "/ui/favicon.png";
+  document.head.append(icon);
+}
+
+setupFavicon();
+
 function setupSidebar() {
   const nav = document.querySelector(".nav");
   if (!nav) return;
@@ -359,7 +370,7 @@ function addActivityMessage(form) {
 
 function enhanceFileInput(form) {
   const input = form.querySelector("input[type=file]");
-  if (!input) return () => {};
+  if (!input) return () => { };
   const isChatAttachment = form.classList.contains("chat-composer")
     && document.body.dataset.agent === "compliance";
   const attachmentButton = form.querySelector(".attachment-button");
@@ -393,8 +404,8 @@ function addQuerySuggestions(form) {
   const suggestions = document.body.dataset.agent === "compliance"
     ? ["Does our travel policy cover manager approval?", "What policy evidence supports cyber safety controls?", "Which policy defines procurement approval limits?"]
     : collection === "policies"
-    ? ["What is the travel reimbursement policy?", "Who approves cyber safety policy?", "What is the leave policy?"]
-    : ["Who works in Finance?", "Find people in Operations", "Who has Python experience?"];
+      ? ["What is the travel reimbursement policy?", "Who approves cyber safety policy?", "What is the leave policy?"]
+      : ["Who works in Finance?", "Find people in Operations", "Who has Python experience?"];
   const group = document.createElement("div");
   group.className = "suggestions";
   group.setAttribute("aria-label", "Example queries");
