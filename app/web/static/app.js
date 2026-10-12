@@ -262,25 +262,63 @@ function renderSearch(data) {
   return wrapper;
 }
 
+function displaySource(citation) {
+  const employee = citation.section?.match(
+    /^Employee record:\s*(.+?)(?:\s+\(([^)]+)\))?$/i,
+  );
+  if (employee) return employee[2] ? `${employee[1]} · ${employee[2]}` : employee[1];
+  const documentName = (citation.source_document || "Source")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const section = citation.section?.replace(/^Page\s+\d+$/i, "").trim();
+  return section ? `${documentName} · ${section}` : documentName;
+}
+
+function renderSourcePills(citations, headingText = "Sources") {
+  const sourceSection = document.createElement("section");
+  sourceSection.className = "source-citations";
+  const heading = document.createElement("strong");
+  heading.className = "source-citations-heading";
+  heading.textContent = headingText;
+  const pills = document.createElement("div");
+  pills.className = "source-pills";
+  const labels = citations.map(displaySource);
+  labels.forEach((label, index) => {
+    const pill = document.createElement("span");
+    pill.className = "source-pill";
+    pill.textContent = label;
+    pill.hidden = index >= 5;
+    pills.append(pill);
+  });
+  sourceSection.append(heading, pills);
+  if (labels.length > 5) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "text-button source-pills-toggle";
+    toggle.textContent = `Show ${labels.length - 5} more`;
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.addEventListener("click", () => {
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      pills.querySelectorAll(".source-pill").forEach((pill, index) => {
+        pill.hidden = expanded && index >= 5;
+      });
+      toggle.setAttribute("aria-expanded", String(!expanded));
+      toggle.textContent = expanded ? `Show ${labels.length - 5} more` : "Show less";
+    });
+    sourceSection.append(toggle);
+  }
+  return sourceSection;
+}
+
 function renderAnswer(data) {
   const wrapper = document.createElement("div");
   const answer = document.createElement("div");
   answer.className = "answer";
   answer.textContent = data.answer;
   wrapper.append(answer);
-  if (data.citations.length) {
-    const heading = document.createElement("strong");
-    heading.textContent = "Sources";
-    heading.style.display = "block";
-    heading.style.marginTop = "18px";
-    wrapper.append(heading);
-    data.citations.forEach((citation) => {
-      const source = document.createElement("div");
-      source.className = "meta";
-      source.textContent = `[${citation.citation_id}] ${citation.source_document} · ${citation.section}${citation.page ? ` · page ${citation.page}` : ""}`;
-      wrapper.append(source);
-    });
-  }
+  if (data.citations.length) wrapper.append(renderSourcePills(data.citations));
   const copy = document.createElement("button");
   copy.className = "text-button copy-button";
   copy.type = "button";
@@ -304,19 +342,7 @@ function renderComplianceReview(data) {
   assessment.className = "answer";
   assessment.textContent = data.assessment;
   wrapper.append(assessment);
-  if (data.citations.length) {
-    const heading = document.createElement("strong");
-    heading.textContent = "Policy evidence used";
-    heading.style.display = "block";
-    heading.style.marginTop = "18px";
-    wrapper.append(heading);
-    data.citations.forEach((citation) => {
-      const source = document.createElement("div");
-      source.className = "meta";
-      source.textContent = `[${citation.citation_id}] ${citation.source_document} · ${citation.section}${citation.page ? ` · page ${citation.page}` : ""}`;
-      wrapper.append(source);
-    });
-  }
+  if (data.citations.length) wrapper.append(renderSourcePills(data.citations));
   return wrapper;
 }
 
